@@ -1,0 +1,12 @@
+(;GM[1]FF[4]CA[UTF-8]AP[GoAI:1.0]SZ[9]KM[7.0]PB[Black]PW[White]RU[Chinese]C[GoAI self-play iteration 40 game 1]
+;B[fg];W[ge];B[df];W[ff];B[gd];W[gf];B[gg];W[ee];B[ed];W[eg]
+;B[de];W[ce];B[ef];W[dd];B[fe];W[dg];B[cd];W[dc];B[cf];W[cc]
+;B[cg];W[bd];B[ec];W[fh];B[dh];W[hd];B[gc];W[hg];B[eh];W[gh]
+;B[he];W[eg];B[be];W[cd];B[fg];W[gg];B[dg];W[hf];B[hc];W[ie]
+;B[db];W[cb];B[eb];W[fb];B[fc];W[bf];B[bg];W[ae];B[ca];W[ag]
+;B[ah];W[ba];B[af];W[da];B[be];W[ad];B[ea];W[bf];B[ag];W[ic]
+;B[ib];W[id];B[gb];W[ab];B[ha];W[fg];B[fa];W[ca];B[fi];W[gi]
+;B[ei];W[be];B[ci];W[hi];B[ih];W[ig];B[ee];W[bc];B[ii];W[bi]
+;B[hb];W[bh];B[ch];W[];B[ai];W[bi];B[bh];W[];B[ga];W[]
+;B[di];W[];B[bi];W[hh];B[ih];W[];B[fb];W[ii];B[];W[]
+RE[W+R])
