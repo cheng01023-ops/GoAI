@@ -34,6 +34,7 @@ if [ -d "$MIRROR" ]; then
   rsync -a --exclude 'build/' --exclude 'runs_live/' --exclude 'runs/' --exclude '.git/'         --exclude '__pycache__/' --exclude '.venv/' --exclude 'GoAI-Windows/'         "$REPO/src/" "$MIRROR/src/" 2>/dev/null
   rsync -a --exclude '__pycache__/' "$REPO/include/" "$MIRROR/include/" 2>/dev/null
   rsync -a --exclude '__pycache__/' "$REPO/gpu/" "$MIRROR/gpu/" 2>/dev/null
+  rsync -a --exclude '__pycache__/' "$REPO/tools/" "$MIRROR/tools/" 2>/dev/null
   for f in Makefile Makefile.win README.md README_Windows.md report.md LICENSE .gitignore; do
     [ -f "$REPO/$f" ] && cp -f "$REPO/$f" "$MIRROR/$f" 2>/dev/null
   done
