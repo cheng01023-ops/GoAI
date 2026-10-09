@@ -86,6 +86,25 @@ void net_init_ex(Net *net, int size, int planes, int channels, int vhidden,
 
 void net_free(Net *net) { free(net->params); net->params = NULL; net->n_params = 0; }
 
+/* 把 src 中形状相同的参数段拷贝到 dst。用于"给已训练的网络加残差块"：
+   卷积层/头部权重原样搬过去，新加的残差块保持随机初始化。 */
+void net_copy_shared(Net *dst, const Net *src) {
+    if (dst->size != src->size || dst->planes != src->planes ||
+        dst->channels != src->channels || dst->vhidden != src->vhidden) return;
+    const struct { int d, s, n; } seg[] = {
+        { dst->off_c1w, src->off_c1w, src->len_c1w }, { dst->off_c1b, src->off_c1b, src->len_c1b },
+        { dst->off_c2w, src->off_c2w, src->len_c2w }, { dst->off_c2b, src->off_c2b, src->len_c2b },
+        { dst->off_pw, src->off_pw, src->len_pw },    { dst->off_pb, src->off_pb, src->len_pb },
+        { dst->off_pfcw, src->off_pfcw, src->len_pfcw }, { dst->off_pfcb, src->off_pfcb, src->len_pfcb },
+        { dst->off_vw, src->off_vw, src->len_vw },    { dst->off_vb, src->off_vb, src->len_vb },
+        { dst->off_vfc1w, src->off_vfc1w, src->len_vfc1w }, { dst->off_vfc1b, src->off_vfc1b, src->len_vfc1b },
+        { dst->off_vfc2w, src->off_vfc2w, src->len_vfc2w }, { dst->off_vfc2b, src->off_vfc2b, src->len_vfc2b },
+    };
+    for (size_t i = 0; i < sizeof(seg) / sizeof(seg[0]); i++)
+        if (seg[i].n > 0)
+            memcpy(dst->params + seg[i].d, src->params + seg[i].s, (size_t)seg[i].n * sizeof(float));
+}
+
 int net_param_count(const Net *net) { return net->n_params; }
 
 float net_param_norm(const Net *net) {

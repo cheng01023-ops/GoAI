@@ -60,6 +60,9 @@ int   net_param_count(const Net *net);
 float net_param_norm(const Net *net);
 void  net_zero_grad(const Net *net, float *grad);
 
+/* 把 src 中形状相同的参数段拷贝到 dst（给已有网络加残差块时用）*/
+void  net_copy_shared(Net *dst, const Net *src);
+
 void  net_cache_init(const Net *net, NetCache *c);
 void  net_cache_free(NetCache *c);
 

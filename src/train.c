@@ -523,10 +523,29 @@ int train_run(const TrainConfig *cfgin) {
     int  start_iter = 1;
     long total_games = 0;
     if (cfg.resume && cfg.resume_path) {
-        if (net_load(&t.net, cfg.resume_path))
+        if (cfg.blocks > 0) {
+            /* 带残差块时不能直接 net_load（那会把网络重建成文件里的结构），
+               而是先读进临时网络，再把形状相同的权重搬进已经建好的残差网络。 */
+            Net old;
+            memset(&old, 0, sizeof(old));
+            if (net_load(&old, cfg.resume_path)) {
+                if (old.blocks != cfg.blocks) {
+                    net_copy_shared(&t.net, &old);
+                    printf("继续训练：已载入 %s（残差块 %d -> %d，共享权重已迁移）\n",
+                           cfg.resume_path, old.blocks, cfg.blocks);
+                } else {
+                    memcpy(t.net.params, old.params, (size_t)t.net.n_params * sizeof(float));
+                    printf("继续训练：已载入 %s\n", cfg.resume_path);
+                }
+                net_free(&old);
+            } else {
+                printf("继续训练：%s 不存在，将从随机初始化开始\n", cfg.resume_path);
+            }
+        } else if (net_load(&t.net, cfg.resume_path)) {
             printf("继续训练：已载入 %s\n", cfg.resume_path);
-        else
+        } else {
             printf("继续训练：%s 不存在，将从随机初始化开始\n", cfg.resume_path);
+        }
     }
     {
         snprintf(path, sizeof(path), "%s/state.txt", cfg.out_dir);
