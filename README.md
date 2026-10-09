@@ -76,6 +76,89 @@ python gpu/server.py --size 19 --channels 256 --device cuda --amp bf16 --max-bat
 
 ---
 
+## 训练进阶：让曲线继续往下走
+
+9 路 32 通道练到 3 万多局后会遇到平台期：策略损失在 2.7~2.9 之间来回震荡、晋级赛长期 50%。
+原因是**学习信号饱和 + 固定学习率**，不是训练时间不够。程序内置了四个机制来突破它：
+
+### 1. 学习率衰减（必开）
+
+    --lr 0.005 --lr-decay-every 100 --lr-decay-factor 0.85 --lr-min 0.0005
+
+第 k 轮的学习率 = `lr * factor^(k / every)`，夹在 [lr_min, lr] 之间。
+按**绝对轮次**计算，所以中途停止再 `--resume` 不会打乱计划。
+每轮的学习率会打印在控制台，并写进 `train_log.csv` 的 `lr` 列。
+
+### 2. 固定锚点评估（判断"到底有没有变强"）
+
+    --anchor versions/goai9x9_v3_33kgames.bin --anchor-every 10 --anchor-games 20
+
+拿一个**永不再变**的网络当尺子，每隔 N 轮和它对战若干局，把胜率写进 CSV 的
+`anchor_winrate` 列。因为它不随训练漂移，这条曲线比"对上一版胜率"干净得多 ——
+**这是判断训练是否真的在进步的主指标**。
+
+### 3. 退化回滚保护
+
+    --rollback 1 --rollback-patience 3
+
+连续 N 次晋级赛胜率低于 45%（判定练歪了），自动载入 `best.bin` 重新出发，
+并把 Adam 的一阶/二阶动量清零，避免带着"坏记忆"继续跑。
+
+### 4. 评估带置信区间
+
+晋级赛和锚点评估都会打印 `±X%` 的 95% 置信区间（`1.96*sqrt(p(1-p)/n)`）。
+**看进步时务必对照它**：12 局打出的 58% 和 42% 在统计上没有区别。
+
+### 推荐配置
+
+    ./build/GoAI train --size 9 --channels 32 --forever \
+      --resume runs_v4/latest.bin \
+      --games 40 --sims 140 --steps 250 --batch 64 \
+      --lr 0.005 --lr-decay-every 100 --lr-decay-factor 0.85 --lr-min 0.0005 \
+      --threads 10 --evalgames 12 --evalsims 20 \
+      --gate 1 --gategames 40 --eval-every 5 \
+      --anchor versions/goai9x9_v3_33kgames.bin --anchor-every 10 --anchor-games 20 \
+      --rollback 1 --rollback-patience 3 --out runs_v4
+
+### train_log.csv 的列
+
+`iteration, games, positions, policy_loss, value_loss, param_norm, winrate_vs_random,`
+`gate_winrate, elapsed_s, lr, anchor_winrate`
+
+（`gate_winrate` = 对"当前最佳"的胜率，`-1` 表示这一轮没打；`anchor_winrate` 同理）
+
+---
+
+## 换大棋盘：用热启动省掉前期学习
+
+9 路练得差不多了想上 13 路 / 19 路，不必从随机权重开始。
+**卷积层学到的棋形知识（气、连接、断点、边角手段）与棋盘大小无关**，
+只有策略头/价值头依赖棋盘点数。`tools/warm_start.py` 负责把前者搬过去：
+
+    # 9 路 32 通道 -> 13 路 64 通道（通道数不同时用切片迁移）
+    python3 tools/warm_start.py --from versions/goai9x9_v3_33kgames.bin \
+        --size 13 --channels 64 --vhidden 64 --out warm13.bin
+
+    # 自检（校验逐值复制是否正确）
+    python3 tools/warm_start.py --selftest
+
+输出会明确告诉你哪些层被完整迁移、哪些做了切片迁移、哪些必须重学：
+
+    完整迁移: pb, vb
+    切片迁移: c1w(1152/2304), c1b(32/64), c2w(9216/36864), c2b(32/64), pw(64/128), vw(32/64)
+    重新学习: pfcw, pfcb, vfc1w, vfc1b, vfc2w, vfc2b
+
+拿到 `warm13.bin` 就能直接开始训练：
+
+    ./build/GoAI train --size 13 --channels 64 --forever \
+      --resume warm13.bin --games 40 --sims 200 --steps 250 \
+      --lr 0.004 --lr-decay-every 100 --lr-decay-factor 0.85 \
+      --threads 10 --gate 1 --gategames 40 --eval-every 5 \
+      --anchor warm13.bin --anchor-every 10 --anchor-games 20 --out runs13
+
+> 注意：13 路每局手数约为 9 路的 1.5 倍、局面数 2.1 倍，整体慢 2.5~3 倍。
+> 用 `--sims` 控制强度：13 路建议 200~400。
+
 ## 项目结构
 
 ```

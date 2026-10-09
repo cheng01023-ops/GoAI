@@ -23,6 +23,14 @@ static void usage(void) {
         "               --steps N    gradient steps per iteration (default 300)\n"
         "               --batch N    mini-batch size (default 64)\n"
         "               --lr X       learning rate (default 0.02)\n"
+        "               --lr-decay-every N   halve-ish the LR every N rounds (0 = off)\n"
+        "               --lr-decay-factor F  multiply LR by F each decay (default 0.7)\n"
+        "               --lr-min X           never decay below X (default 1e-4)\n"
+        "               --anchor F.bin       fixed reference net for a low-noise progress curve\n"
+        "               --anchor-every N     evaluate against it every N rounds (default 20)\n"
+        "               --anchor-games N     games per anchor evaluation (default 20)\n"
+        "               --rollback 0/1       fall back to best.bin when training degrades (default 1)\n"
+        "               --rollback-patience N  consecutive bad gates before rollback (default 3)\n"
         "               --channels N conv channels (default 16 for 9x9)\n"
         "               --buffer N   replay buffer size (default 30000)\n"
         "               --evalgames N evaluation games per iteration (default 20)\n"
@@ -97,6 +105,14 @@ int main(int argc, char **argv) {
         cfg.train_steps    = arg_int(argc, argv, "--steps", cfg.train_steps);
         cfg.batch_size     = arg_int(argc, argv, "--batch", cfg.batch_size);
         cfg.lr             = (float)arg_dbl(argc, argv, "--lr", cfg.lr);
+        cfg.lr_decay_every = arg_int(argc, argv, "--lr-decay-every", cfg.lr_decay_every);
+        cfg.lr_decay_factor= (float)arg_dbl(argc, argv, "--lr-decay-factor", cfg.lr_decay_factor);
+        cfg.lr_min         = (float)arg_dbl(argc, argv, "--lr-min", cfg.lr_min);
+        cfg.anchor_path    = arg_str(argc, argv, "--anchor", cfg.anchor_path);
+        cfg.anchor_every   = arg_int(argc, argv, "--anchor-every", cfg.anchor_every);
+        cfg.anchor_games   = arg_int(argc, argv, "--anchor-games", cfg.anchor_games);
+        cfg.rollback       = arg_int(argc, argv, "--rollback", cfg.rollback);
+        cfg.rollback_patience = arg_int(argc, argv, "--rollback-patience", cfg.rollback_patience);
         cfg.channels       = arg_int(argc, argv, "--channels", cfg.channels);
         cfg.buffer_cap     = arg_int(argc, argv, "--buffer", cfg.buffer_cap);
         cfg.eval_games     = arg_int(argc, argv, "--evalgames", cfg.eval_games);

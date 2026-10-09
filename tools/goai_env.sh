@@ -18,6 +18,14 @@ GOAI_EVALGAMES="${GOAI_EVALGAMES:-}"
 GOAI_EVALSIMS="${GOAI_EVALSIMS:-}"
 GOAI_GATE_EVERY="${GOAI_GATE_EVERY:-}"
 GOAI_GATEGAMES="${GOAI_GATEGAMES:-}"
+# 学习率衰减 + 锚点评估 + 退化回滚
+GOAI_LR_DECAY_EVERY="${GOAI_LR_DECAY_EVERY:-100}"
+GOAI_LR_DECAY_FACTOR="${GOAI_LR_DECAY_FACTOR:-0.85}"
+GOAI_LR_MIN="${GOAI_LR_MIN:-0.0005}"
+GOAI_ANCHOR="${GOAI_ANCHOR:-versions/goai9x9_v3_33kgames.bin}"
+GOAI_ANCHOR_EVERY="${GOAI_ANCHOR_EVERY:-10}"
+GOAI_ANCHOR_GAMES="${GOAI_ANCHOR_GAMES:-20}"
+GOAI_ROLLBACK_PATIENCE="${GOAI_ROLLBACK_PATIENCE:-3}"
 
 # 强度：auto / low / mid / high
 goai_intensity() {
@@ -116,6 +124,9 @@ goai_start() {
       --size 9 --channels "$GOAI_CHANNELS" --forever --resume "$GOAI_OUT/latest.bin" \
       --games "$GOAI_GAMES" --sims "$GOAI_SIMS" --steps "$GOAI_STEPS" \
       --batch 64 --lr "$GOAI_LR" --evalgames "$GOAI_EVALGAMES" --evalsims "$GOAI_EVALSIMS" \
+      --lr-decay-every "$GOAI_LR_DECAY_EVERY" --lr-decay-factor "$GOAI_LR_DECAY_FACTOR" --lr-min "$GOAI_LR_MIN" \
+      --anchor "$GOAI_ANCHOR" --anchor-every "$GOAI_ANCHOR_EVERY" --anchor-games "$GOAI_ANCHOR_GAMES" \
+      --rollback 1 --rollback-patience "$GOAI_ROLLBACK_PATIENCE" \
       --threads "$threads" --sgf 2 --gate 1 --gategames "$GOAI_GATEGAMES" --eval-every "$GOAI_GATE_EVERY" --plot 1 \
       --out "$GOAI_OUT" < /dev/null >> "$GOAI_LOGFILE" 2>&1 & )
   sleep 1
@@ -134,6 +145,8 @@ goai_start() {
     echo "   线程数 $threads · 强度：$(goai_intensity_name) · 供电：$(goai_power_note)"
     echo "   自对弈 $GOAI_GAMES 局/轮 · 每步 $GOAI_SIMS 次模拟 · 训练 $GOAI_STEPS 步/轮"
     echo "   评估 $GOAI_EVALGAMES 局/轮 · 每 $GOAI_GATE_EVERY 轮打一次晋级赛（$GOAI_GATEGAMES 局）"
+    echo "   学习率 $GOAI_LR 起，每 $GOAI_LR_DECAY_EVERY 轮 x$GOAI_LR_DECAY_FACTOR，下限 $GOAI_LR_MIN"
+    echo "   锚点 $GOAI_ANCHOR · 每 $GOAI_ANCHOR_EVERY 轮评估 $GOAI_ANCHOR_GAMES 局 · 退化回滚 $GOAI_ROLLBACK_PATIENCE 次"
     if goai_fullspeed; then echo "   模式：满速（不加后台 QoS，会跟正常使用抢 CPU）"; else echo "   模式：礼貌（nice 低优先级 + 后台 QoS，你忙时自动让出性能核）"; fi
     echo "   日志 $GOAI_LOGFILE"
   else

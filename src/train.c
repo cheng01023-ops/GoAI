@@ -100,6 +100,14 @@ void train_config_default(TrainConfig *cfg, int size) {
     cfg->train_steps = 300;
     cfg->batch_size = 64;
     cfg->lr = 0.02f;
+    cfg->lr_min = 1e-4f;
+    cfg->anchor_path = NULL;
+    cfg->anchor_every = 20;      /* 每 20 轮对固定基准评估一次 */
+    cfg->anchor_games = 20;
+    cfg->rollback = 1;
+    cfg->rollback_patience = 3;
+    cfg->lr_decay_every = 0;      /* 默认不衰减，用 --lr-decay-every 打开 */
+    cfg->lr_decay_factor = 0.7f;
     cfg->weight_decay = 1e-4f;
     cfg->dirichlet_alpha = 0.3f;
     cfg->noise_eps = 0.25f;
@@ -128,6 +136,7 @@ void train_config_default(TrainConfig *cfg, int size) {
 
 int trainer_init(Trainer *t, const TrainConfig *cfg, uint64_t seed) {
     memset(t, 0, sizeof(*t));
+    t->lr = cfg->lr;
     net_init(&t->net, cfg->size, cfg->planes, cfg->channels, cfg->vhidden, seed);
     net_cache_init(&t->net, &t->cache);
     const size_t np = (size_t)t->net.n_params;
@@ -312,6 +321,27 @@ static void *selfplay_thread(void *arg) {
 
 /* --------------------------------------------------------------- training */
 
+/* 胜率的 95% 置信区间半宽：1.96 * sqrt(p(1-p)/n)。
+   用来判断"这次进步"是真的还是只是样本噪声。 */
+double train_winrate_ci(double p, int games) {
+    if (games <= 0) return 0.0;
+    if (p < 0.0) p = 0.0;
+    if (p > 1.0) p = 1.0;
+    return 1.96 * sqrt(p * (1.0 - p) / (double)games);
+}
+
+/* 学习率计划：按"绝对轮次"衰减，所以中途停止再 --resume 接着练不会打乱计划。
+   第 k 轮的学习率 = lr * factor^(k / every)，并夹在 [lr_min, lr] 之间。 */
+float train_lr_at_iter(const TrainConfig *cfg, int iter) {
+    if (cfg->lr_decay_every <= 0) return cfg->lr;
+    if (!(cfg->lr_decay_factor > 0.0f) || cfg->lr_decay_factor >= 1.0f) return cfg->lr;
+    const int k = iter / cfg->lr_decay_every;
+    if (k <= 0) return cfg->lr;
+    float lr = cfg->lr * powf(cfg->lr_decay_factor, (float)k);
+    if (lr < cfg->lr_min) lr = cfg->lr_min;
+    return lr;
+}
+
 int train_gradient_steps(Trainer *t, const TrainConfig *cfg, int steps,
                          float *policy_loss, float *value_loss) {
     if (t->count == 0) return 1;
@@ -356,7 +386,7 @@ int train_gradient_steps(Trainer *t, const TrainConfig *cfg, int steps,
         const float scale = 1.0f / (float)cfg->batch_size;
         for (int i = 0; i < t->net.n_params; i++) t->grad[i] *= scale;
         net_adam(&t->net, t->grad, t->adam_m, t->adam_v, ++t->step,
-                 cfg->lr, cfg->weight_decay, 1.0f);
+                 t->lr, cfg->weight_decay, 1.0f);
         pl += bpl * scale;
         vl += bvl * scale;
     }
@@ -479,7 +509,7 @@ int train_run(const TrainConfig *cfgin) {
     FILE *csv = fopen(path, "a");
     if (csv && !log_has_header) {
         fprintf(csv, "iteration,games,positions,policy_loss,value_loss,param_norm,"
-                     "winrate_vs_random,gate_winrate,elapsed_s\n");
+                     "winrate_vs_random,gate_winrate,elapsed_s,lr,anchor_winrate\n");
         fflush(csv);
     }
 
@@ -488,10 +518,35 @@ int train_run(const TrainConfig *cfgin) {
            cfg.size, cfg.size, cfg.channels, cfg.sims, cfg.games_per_iter, cfg.threads);
     printf("  输出目录 %s/  （latest.bin / best.bin / train_log.csv / status.txt）\n",
            cfg.out_dir);
+    if (cfg.lr_decay_every > 0)
+        printf("  学习率计划：%.5f 起，每 %d 轮 ×%.2f，下限 %.5f\n",
+               cfg.lr, cfg.lr_decay_every, cfg.lr_decay_factor, cfg.lr_min);
     if (cfg.forever) printf("  模式：持续训练（随时可停止，停止时会保存权重）\n");
     else printf("  模式：训练 %d 轮后结束\n", cfg.iterations);
     fflush(stdout);
 
+    /* ---- 固定锚点：拿一个不再变化的网络当尺子，进步曲线不受对手漂移影响 ---- */
+    Net   anchor;
+    int   have_anchor = 0;
+    if (cfg.anchor_path && cfg.anchor_path[0]) {
+        net_init(&anchor, cfg.size, cfg.planes, cfg.channels, cfg.vhidden, 1);
+        if (net_load(&anchor, cfg.anchor_path)) {
+            if (anchor.size == cfg.size && anchor.planes == cfg.planes &&
+                anchor.channels == cfg.channels) {
+                have_anchor = 1;
+                printf("  锚点网络：%s（每 %d 轮评估 %d 局，用于低噪声进步曲线）\n",
+                       cfg.anchor_path, cfg.anchor_every, cfg.anchor_games);
+            } else {
+                printf("  锚点网络规格(%d路/%d通道)与当前训练不一致，已忽略\n",
+                       anchor.size, anchor.channels);
+                net_free(&anchor);
+            }
+        } else {
+            printf("  锚点网络 %s 打不开，已忽略\n", cfg.anchor_path);
+            net_free(&anchor);
+        }
+    }
+    int bad_gates = 0;                  /* 连续几次晋级赛表现差 */
     const double t_run0 = goai_now();
     int iter = start_iter;
     int done_iters = 0;
@@ -573,6 +628,7 @@ int train_run(const TrainConfig *cfgin) {
         }
 
         float pl = 0, vl = 0;
+        t.lr = train_lr_at_iter(&cfg, iter);      /* 学习率衰减计划 */
         train_gradient_steps(&t, &cfg, cfg.train_steps, &pl, &vl);
 
         EngineSpec me  = { &t.net, cfg.eval_sims, 0 };
@@ -580,6 +636,19 @@ int train_run(const TrainConfig *cfgin) {
         int wa = 0, wb = 0, dr = 0;
         eval_match(&s, &cfg, me, rnd, cfg.eval_games, &wa, &wb, &dr);
         const double wr = (wa + wb + dr) > 0 ? (double)wa / (double)(wa + wb + dr) : 0.0;
+
+        /* 对固定锚点的胜率：噪声低、随训练单调上升，是判断"到底有没有变强"的主指标 */
+        double aw = -1.0;
+        if (have_anchor && cfg.anchor_every > 0 && cfg.anchor_games > 0 &&
+            (iter % cfg.anchor_every == 0)) {
+            EngineSpec me2 = { &t.net, cfg.eval_sims, 0 };
+            EngineSpec an2 = { &anchor, cfg.eval_sims, 0 };
+            int aa = 0, ab = 0, ad = 0;
+            eval_match(&s, &cfg, me2, an2, cfg.anchor_games, &aa, &ab, &ad);
+            aw = (aa + ab + ad) > 0 ? (double)aa / (double)(aa + ab + ad) : 0.0;
+            printf("  [锚点] 对固定基准胜率 %.1f%% (±%.1f%%，%d 局)\n",
+                   aw * 100.0, train_winrate_ci(aw, cfg.anchor_games) * 100.0, cfg.anchor_games);
+        }
 
         snprintf(path, sizeof(path), "%s/latest.bin", cfg.out_dir);
         net_save(&t.net, path);
@@ -596,11 +665,33 @@ int train_run(const TrainConfig *cfgin) {
                 int ba = 0, bb = 0, bd = 0;
                 eval_match(&s, &cfg, cur, bst, cfg.gate_games, &ba, &bb, &bd);
                 gw = (ba + bb + bd) > 0 ? (double)ba / (double)(ba + bb + bd) : 0.0;
-                if (gw >= 0.55) {
-                    net_save(&t.net, best_path);
-                    printf("  [晋级] 新网络对当前最佳胜率 %.1f%% → 更新 best.bin\n", gw * 100.0);
-                } else {
-                    printf("  [保留] 新网络对当前最佳胜率 %.1f%% → 继续保留旧 best.bin\n", gw * 100.0);
+                {
+                    const double ci = train_winrate_ci(gw, cfg.gate_games) * 100.0;
+                    if (gw >= 0.55) {
+                        net_save(&t.net, best_path);
+                        printf("  [晋级] 对当前最佳胜率 %.1f%% (±%.1f%%) -> 更新 best.bin\n",
+                               gw * 100.0, ci);
+                    } else {
+                        printf("  [保留] 对当前最佳胜率 %.1f%% (±%.1f%%) -> 保留旧 best.bin\n",
+                               gw * 100.0, ci);
+                    }
+                    /* 退化保护：连着几次明显输给旧版 = 练歪了，退回 best 再继续 */
+                    if (gw < 0.45) bad_gates++; else bad_gates = 0;
+                    if (cfg.rollback && cfg.rollback_patience > 0 &&
+                        bad_gates >= cfg.rollback_patience) {
+                        printf("  [回滚] 连续 %d 次对最佳胜率 < 45%%，判定退化 -> 载入 best.bin\n",
+                               bad_gates);
+                        if (net_load(&t.net, best_path)) {
+                            memset(t.adam_m, 0, (size_t)t.net.n_params * sizeof(float));
+                            memset(t.adam_v, 0, (size_t)t.net.n_params * sizeof(float));
+                            t.step = 0;
+                            t.lr = train_lr_at_iter(&cfg, iter);
+                            printf("  [回滚] 已回到最佳权重，Adam 状态清零，学习率 %.5f\n", t.lr);
+                        } else {
+                            printf("  [回滚] best.bin 读取失败，保持当前权重\n");
+                        }
+                        bad_gates = 0;
+                    }
                 }
             } else {
                 net_save(&t.net, best_path);
@@ -616,6 +707,7 @@ int train_run(const TrainConfig *cfgin) {
                iter, cfg.games_per_iter, positions, el);
         printf("  策略损失 %.4f · 价值损失 %.4f · 对随机胜率 %.1f%%",
                pl, vl, wr * 100.0);
+        printf(" · 学习率 %.5f", t.lr);
         if (gw >= 0.0) printf(" · 对最佳 %.1f%%", gw * 100.0);
         printf("\n");
         printf("  累计 %ld 局 · 已训练 %.1f 分钟 · 权重 %s/latest.bin\n",
@@ -624,8 +716,9 @@ int train_run(const TrainConfig *cfgin) {
         fflush(stdout);
 
         if (csv) {
-            fprintf(csv, "%d,%d,%d,%.5f,%.5f,%.4f,%.4f,%.4f,%.2f\n",
-                    iter, cfg.games_per_iter, positions, pl, vl, net_param_norm(&t.net), wr, gw, el);
+            fprintf(csv, "%d,%d,%d,%.5f,%.5f,%.4f,%.4f,%.4f,%.2f,%.6f,%.4f\n",
+                    iter, cfg.games_per_iter, positions, pl, vl, net_param_norm(&t.net), wr, gw, el,
+                    t.lr, aw);
             fflush(csv);
         }
         {
@@ -658,6 +751,7 @@ int train_run(const TrainConfig *cfgin) {
     fflush(stdout);
 
     if (csv) fclose(csv);
+    if (have_anchor) net_free(&anchor);
     search_free(&s);
     trainer_free(&t);
     if (cfg.plot) {

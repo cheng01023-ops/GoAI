@@ -32,3 +32,5 @@ DerivedData/
 runs_v2/games/
 runs_v2/iter_*.bin
 tools/autosync.log
+runs_v*/
+runs13/

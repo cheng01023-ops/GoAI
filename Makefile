@@ -7,8 +7,8 @@ BUILD   := build
 
 SRC      := src/board.c src/compat.c src/net.c src/mcts.c src/sockets.c src/remote.c src/gplay.c src/train.c src/apps.c
 OBJ      := $(SRC:src/%.c=$(BUILD)/%.o) $(BUILD)/main.o
-TESTSRC  := tests/test_main.c tests/test_board.c tests/test_rng.c tests/test_net.c tests/test_mcts.c
-TESTOBJ  := $(TESTSRC:tests/%.c=$(BUILD)/test_%.o) $(BUILD)/board.o $(BUILD)/compat.o $(BUILD)/net.o $(BUILD)/mcts.o
+TESTSRC  := tests/test_main.c tests/test_board.c tests/test_rng.c tests/test_net.c tests/test_mcts.c tests/test_train.c
+TESTOBJ  := $(TESTSRC:tests/%.c=$(BUILD)/test_%.o) $(BUILD)/board.o $(BUILD)/compat.o $(BUILD)/net.o $(BUILD)/mcts.o $(BUILD)/train.o
 
 GOBOARD_OBJ := $(BUILD)/goboard.o $(BUILD)/board.o $(BUILD)/compat.o $(BUILD)/net.o $(BUILD)/mcts.o
 
@@ -35,7 +35,7 @@ $(BUILD)/GoBoard: $(GOBOARD_OBJ)
 	$(CC) $(GOBOARD_OBJ) -o $@ $(LDLIBS) -lncurses
 
 $(BUILD)/GoAITests: $(TESTOBJ)
-	$(CC) $(TESTOBJ) -o $@ $(LDLIBS)
+	$(CC) $(TESTOBJ) -o $@ $(LDLIBS) -pthread
 
 test: $(BUILD)/GoAITests
 	./$(BUILD)/GoAITests
