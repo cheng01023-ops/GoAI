@@ -15,10 +15,19 @@ git add -A || exit 1
 if git diff --cached --quiet; then
   # 没有新改动时，也要检查是否有"已提交但没推送"的内容
   BRANCH_NOW=$(git rev-parse --abbrev-ref HEAD)
-  if git rev-parse --abbrev-ref "@{upstream}" >/dev/null 2>&1 &&
-     [ "$(git rev-parse HEAD)" != "$(git rev-parse "@{upstream}")" ]; then
-    say "有已提交但未推送的内容，正在推送"
-    git push -q origin "$BRANCH_NOW" 2>>"$LOG" && say "已推送" || { say "推送失败"; exit 1; }
+  AHEAD=0
+  if git rev-parse --verify --quiet "@{upstream}" >/dev/null 2>&1; then
+    AHEAD=$(git rev-list --count "@{upstream}..HEAD" 2>/dev/null || echo 0)
+  else
+    AHEAD=1   # 没有上游分支，按需要推送处理
+  fi
+  if [ "$AHEAD" -gt 0 ] 2>/dev/null; then
+    say "有 $AHEAD 个已提交但未推送的提交，正在推送"
+    if git push -q origin "$BRANCH_NOW" 2>>"$LOG"; then
+      say "已推送"
+    else
+      say "推送失败（检查网络或 gh auth status）"; exit 1
+    fi
   else
     say "没有新改动，跳过"
   fi
