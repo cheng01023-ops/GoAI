@@ -29,7 +29,7 @@ static void usage(void) {
         "               --anchor F.bin       fixed reference net for a low-noise progress curve\n"
         "               --anchor-every N     evaluate against it every N rounds (default 20)\n"
         "               --anchor-games N     games per anchor evaluation (default 20)\n"
-        "               --reuse 0/1          reuse the search tree between moves (default 1)\n"
+        "               --reuse 0/1          reuse search tree between moves (default 0)\n"
         "               --rollback 0/1       fall back to best.bin when training degrades (default 1)\n"
         "               --rollback-patience N  consecutive bad gates before rollback (default 3)\n"
         "               --channels N conv channels (default 16 for 9x9)\n"

@@ -104,7 +104,7 @@ void train_config_default(TrainConfig *cfg, int size) {
     cfg->anchor_path = NULL;
     cfg->anchor_every = 20;      /* 每 20 轮对固定基准评估一次 */
     cfg->anchor_games = 20;
-    cfg->reuse = 1;
+    cfg->reuse = 0;   /* 实测：默认关闭（见 README 的 A/B 结论） */
     cfg->rollback = 1;
     cfg->rollback_patience = 3;
     cfg->lr_decay_every = 0;      /* 默认不衰减，用 --lr-decay-every 打开 */
