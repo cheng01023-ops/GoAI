@@ -465,7 +465,12 @@ void net_adam(Net *net, float *grad, float *m, float *v, int step, float lr,
 typedef struct {
     uint32_t magic;
     int32_t  size, planes, channels, vhidden, n_params;
-} NetHeader;
+} NetHeader;          /* 旧格式（无 blocks）*/
+
+typedef struct {
+    uint32_t magic;
+    int32_t  size, planes, channels, vhidden, blocks, n_params;
+} NetHeader2;         /* 新格式（带残差块数）*/
 
 bool net_save(const Net *net, const char *path) {
     /* 先写临时文件再改名：这样正在对弈的程序读到的永远是完整文件
@@ -474,10 +479,10 @@ bool net_save(const Net *net, const char *path) {
     snprintf(tmp, sizeof(tmp), "%s.tmp%ld", path, goai_pid());
     FILE *f = fopen(tmp, "wb");
     if (!f) return false;
-    NetHeader h;
-    h.magic = NET_MAGIC;
+    NetHeader2 h;
+    h.magic = NET_MAGIC2;
     h.size = net->size; h.planes = net->planes; h.channels = net->channels;
-    h.vhidden = net->vhidden; h.n_params = net->n_params;
+    h.vhidden = net->vhidden; h.blocks = net->blocks; h.n_params = net->n_params;
     const bool ok = fwrite(&h, sizeof(h), 1, f) == 1 &&
                     fwrite(net->params, sizeof(float), (size_t)net->n_params, f) == (size_t)net->n_params;
     fflush(f);
@@ -492,18 +497,30 @@ bool net_load_mem(Net *net, const void *data, size_t len) {
     if (!data || len < sizeof(NetHeader)) return false;
     NetHeader h;
     memcpy(&h, data, sizeof(h));
-    if (h.magic != NET_MAGIC) return false;
-    if (h.n_params <= 0 || len < sizeof(NetHeader) + (size_t)h.n_params * sizeof(float)) {
+    int blocks = 0;
+    size_t hdr = sizeof(NetHeader);
+    if (h.magic == NET_MAGIC2) {
+        if (len < sizeof(NetHeader2)) return false;
+        NetHeader2 h2;
+        memcpy(&h2, data, sizeof(h2));
+        h.size = h2.size; h.planes = h2.planes; h.channels = h2.channels;
+        h.vhidden = h2.vhidden; h.n_params = h2.n_params;
+        blocks = h2.blocks; hdr = sizeof(NetHeader2);
+    } else if (h.magic != NET_MAGIC) {
+        return false;
+    }
+    if (h.n_params <= 0 || len < hdr + (size_t)h.n_params * sizeof(float)) {
         fprintf(stderr, "net_load_mem: 内置权重长度不对（%zu 字节，需要 %zu）\n",
-                len, sizeof(NetHeader) + (size_t)h.n_params * sizeof(float));
+                len, hdr + (size_t)h.n_params * sizeof(float));
         return false;
     }
     if (net->params == NULL || net->size != h.size || net->planes != h.planes ||
-        net->channels != h.channels || net->vhidden != h.vhidden || net->n_params != h.n_params) {
+        net->channels != h.channels || net->vhidden != h.vhidden || net->n_params != h.n_params ||
+        net->blocks != blocks) {
         net_free(net);
-        net_init(net, h.size, h.planes, h.channels, h.vhidden, 1);
+        net_init_ex(net, h.size, h.planes, h.channels, h.vhidden, blocks, 1);
     }
-    memcpy(net->params, (const unsigned char *)data + sizeof(NetHeader),
+    memcpy(net->params, (const unsigned char *)data + hdr,
            (size_t)net->n_params * sizeof(float));
     return true;
 }
@@ -511,12 +528,33 @@ bool net_load_mem(Net *net, const void *data, size_t len) {
 bool net_load(Net *net, const char *path) {
     FILE *f = fopen(path, "rb");
     if (!f) return false;
+    uint32_t magic;
+    if (fread(&magic, sizeof(magic), 1, f) != 1) { fclose(f); return false; }
     NetHeader h;
-    if (fread(&h, sizeof(h), 1, f) != 1 || h.magic != NET_MAGIC) { fclose(f); return false; }
+    memset(&h, 0, sizeof(h));
+    h.magic = magic;
+    int blocks = 0;
+    if (magic == NET_MAGIC2) {
+        NetHeader2 h2;
+        memset(&h2, 0, sizeof(h2));
+        h2.magic = magic;
+        if (fread((unsigned char *)&h2 + sizeof(magic), sizeof(h2) - sizeof(magic), 1, f) != 1) {
+            fclose(f); return false;
+        }
+        h.size = h2.size; h.planes = h2.planes; h.channels = h2.channels;
+        h.vhidden = h2.vhidden; h.n_params = h2.n_params; blocks = h2.blocks;
+    } else if (magic == NET_MAGIC) {
+        if (fread((unsigned char *)&h + sizeof(magic), sizeof(h) - sizeof(magic), 1, f) != 1) {
+            fclose(f); return false;
+        }
+    } else {
+        fclose(f); return false;
+    }
     if (net->params == NULL || net->size != h.size || net->planes != h.planes ||
-        net->channels != h.channels || net->vhidden != h.vhidden || net->n_params != h.n_params) {
+        net->channels != h.channels || net->vhidden != h.vhidden || net->n_params != h.n_params ||
+        net->blocks != blocks) {
         net_free(net);
-        net_init(net, h.size, h.planes, h.channels, h.vhidden, 1);
+        net_init_ex(net, h.size, h.planes, h.channels, h.vhidden, blocks, 1);
     }
     const size_t got = fread(net->params, sizeof(float), (size_t)net->n_params, f);
     fclose(f);

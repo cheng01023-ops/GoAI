@@ -11,6 +11,7 @@
 typedef struct {
     int    size;
     int    planes, channels, vhidden;
+    int    blocks;            /* 残差块数量（0 = 原来的两层卷积）*/
     int    sims;             /* MCTS simulations per move in self-play   */
     int    games_per_iter;
     int    iterations;

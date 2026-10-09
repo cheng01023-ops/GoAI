@@ -120,6 +120,7 @@ int main(int argc, char **argv) {
         cfg.rollback       = arg_int(argc, argv, "--rollback", cfg.rollback);
         cfg.rollback_patience = arg_int(argc, argv, "--rollback-patience", cfg.rollback_patience);
         cfg.channels       = arg_int(argc, argv, "--channels", cfg.channels);
+        cfg.blocks         = arg_int(argc, argv, "--blocks", cfg.blocks);
         cfg.buffer_cap     = arg_int(argc, argv, "--buffer", cfg.buffer_cap);
         cfg.eval_games     = arg_int(argc, argv, "--evalgames", cfg.eval_games);
         cfg.eval_sims      = arg_int(argc, argv, "--evalsims", cfg.eval_sims);

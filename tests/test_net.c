@@ -163,5 +163,67 @@ int test_net_run(void) {
         free(grad); free(m); free(vv); free(x); free(pi);
         net_cache_free(&c); net_free(&net);
     }
+    /* ---------- 残差块的数值梯度校验（blocks = 2）---------- */
+    {
+        const int size = 5, P = NET_FEATURE_PLANES, C = 4, H = 8, BLOCKS = 2;
+        Net net; NetCache c;
+        net_init_ex(&net, size, P, C, H, BLOCKS, 77);
+        CHECK(net.blocks == BLOCKS, "residual net has %d blocks", net.blocks);
+        net_cache_init(&net, &c);
+        const int nn = size * size, NP = nn + 1;
+
+        Rng rng; rng_seed(&rng, 555);
+        float *x = (float *)calloc((size_t)P * nn, sizeof(float));
+        float *pi = (float *)calloc((size_t)NP, sizeof(float));
+        for (int i = 0; i < P * nn; i++) x[i] = rng_double(&rng) < 0.4 ? 1.0f : 0.0f;
+        double s = 0;
+        for (int i = 0; i < NP; i++) { pi[i] = (float)(rng_double(&rng) + 0.05); s += pi[i]; }
+        for (int i = 0; i < NP; i++) pi[i] = (float)(pi[i] / s);
+        const float z = 1.0f;
+
+        float *grad = (float *)calloc((size_t)net.n_params, sizeof(float));
+        net_zero_grad(&net, grad);
+        example_loss(&net, &c, x, pi, z, grad);
+
+        const float h = 3e-3f;
+        int checked = 0, bad = 0;
+        double worst = 0.0;
+        double sum_an = 0, sum_num = 0, sum_a2 = 0, sum_n2 = 0, sum_an2 = 0;
+        for (int t = 0; t < 80; t++) {
+            const int i = (int)rng_below(&rng, (uint32_t)net.n_params);
+            const float w0 = net.params[i];
+            net.params[i] = w0 + h;
+            const float lp = example_loss(&net, &c, x, pi, z, NULL);
+            net.params[i] = w0 - h;
+            const float lm = example_loss(&net, &c, x, pi, z, NULL);
+            net.params[i] = w0;
+            const double num = (double)(lp - lm) / (2.0 * h);
+            const double an = grad[i];
+            checked++;
+            const double tol = 4e-3 + 0.08 * fabs(an);
+            if (fabs(num - an) > tol) { bad++; if (fabs(num-an) > worst) worst = fabs(num-an); }
+            sum_an += an; sum_num += num; sum_a2 += an * an; sum_n2 += num * num; sum_an2 += an * num;
+        }
+        const double denom = sqrt((sum_a2 - sum_an * sum_an / checked) * (sum_n2 - sum_num * sum_num / checked));
+        const double corr = denom > 0 ? (sum_an2 - sum_an * sum_num / checked) / denom : 0.0;
+        printf("    [残差块梯度] 最大绝对偏差 %.2e, 超差 %d/%d\n", worst, bad, checked);
+                CHECK(bad == 0, "residual-block weight gradients match finite differences (%d/%d bad)", bad, checked);
+        CHECK(corr > 0.99, "residual-block gradient correlation = %.5f", corr);
+
+        /* 存取往返也要能保住 blocks */
+        CHECK(net_save(&net, "/tmp/goai_net_blk_test.bin"), "residual net_save");
+        Net b2; memset(&b2, 0, sizeof(b2));
+        CHECK(net_load(&b2, "/tmp/goai_net_blk_test.bin"), "residual net_load");
+        CHECK(b2.blocks == BLOCKS && b2.n_params == net.n_params, "blocks and param count preserved");
+        int diffs = 0;
+        for (int i = 0; i < net.n_params; i++) if (b2.params[i] != net.params[i]) diffs++;
+        CHECK(diffs == 0, "residual weights identical after round trip (%d diffs)", diffs);
+        net_free(&b2);
+
+        free(grad);
+        net_cache_free(&c); net_free(&net);
+        free(x); free(pi);
+    }
+
     return 0;
 }

@@ -104,6 +104,7 @@ void train_config_default(TrainConfig *cfg, int size) {
     cfg->anchor_path = NULL;
     cfg->anchor_every = 20;      /* 每 20 轮对固定基准评估一次 */
     cfg->anchor_games = 20;
+    cfg->blocks = 0;
     cfg->open_plies = 4;         /* 成对开局：4 手（大幅降低评估方差） */
     cfg->open_seed = 0xA11CE5EEDULL;
     cfg->reuse = 0;   /* 实测：默认关闭（见 README 的 A/B 结论） */
@@ -140,7 +141,7 @@ void train_config_default(TrainConfig *cfg, int size) {
 int trainer_init(Trainer *t, const TrainConfig *cfg, uint64_t seed) {
     memset(t, 0, sizeof(*t));
     t->lr = cfg->lr;
-    net_init(&t->net, cfg->size, cfg->planes, cfg->channels, cfg->vhidden, seed);
+    net_init_ex(&t->net, cfg->size, cfg->planes, cfg->channels, cfg->vhidden, cfg->blocks, seed);
     net_cache_init(&t->net, &t->cache);
     const size_t np = (size_t)t->net.n_params;
     t->xlen = cfg->planes * cfg->size * cfg->size;
@@ -573,7 +574,7 @@ int train_run(const TrainConfig *cfgin) {
     Net   anchor;
     int   have_anchor = 0;
     if (cfg.anchor_path && cfg.anchor_path[0]) {
-        net_init(&anchor, cfg.size, cfg.planes, cfg.channels, cfg.vhidden, 1);
+        net_init_ex(&anchor, cfg.size, cfg.planes, cfg.channels, cfg.vhidden, cfg.blocks, 1);
         if (net_load(&anchor, cfg.anchor_path)) {
             if (anchor.size == cfg.size && anchor.planes == cfg.planes &&
                 anchor.channels == cfg.channels) {
@@ -706,7 +707,7 @@ int train_run(const TrainConfig *cfgin) {
         double gw = -1.0;
         if (cfg.gate && (iter % cfg.eval_every == 0)) {
             Net best;
-            net_init(&best, cfg.size, cfg.planes, cfg.channels, cfg.vhidden, 1);
+            net_init_ex(&best, cfg.size, cfg.planes, cfg.channels, cfg.vhidden, cfg.blocks, 1);
             if (net_load(&best, best_path)) {
                 EngineSpec cur = { &t.net, cfg.eval_sims, 0 };
                 EngineSpec bst = { &best,  cfg.eval_sims, 0 };
