@@ -8,7 +8,8 @@
 #include "board.h"
 
 #define NET_FEATURE_PLANES 4
-#define NET_MAGIC 0x474F4149u /* "GOAI" */
+#define NET_MAGIC 0x474F4149u  /* "GOAI"  旧格式：无残差块 */
+#define NET_MAGIC2 0x474F414Au /* "GOAJ"  新格式：带 blocks 字段 */
 
 typedef struct {
     int   size;      /* board size              */
@@ -17,6 +18,7 @@ typedef struct {
     int   channels;  /* conv channels           */
     int   vhidden;   /* value head hidden width */
     int   n_params;
+    int   blocks;    /* 残差块数量（0 = 原有的两层卷积）   */
     int   off_c1w, off_c1b, off_c2w, off_c2b;
     int   off_pw, off_pb;
     int   off_pfcw, off_pfcb;
@@ -25,6 +27,7 @@ typedef struct {
     int   len_c1w, len_c1b, len_c2w, len_c2b;
     int   len_pw, len_pb, len_pfcw, len_pfcb;
     int   len_vw, len_vb, len_vfc1w, len_vfc1b, len_vfc2w, len_vfc2b;
+    int   off_bw, len_bw, blk_stride;   /* 残差块权重区 */
     float *params;
 } Net;
 
@@ -42,15 +45,23 @@ typedef struct {
     float *d_zv;                   /* nn scratch                 */
     float *d_ha;                   /* H scratch                  */
     float *g_scratch;              /* n_params, used when grad == NULL */
+    float *blk;                    /* blocks * 4 * C * nn 前向缓存    */
+    float *dblk;                   /* 3 * C * nn 反向暂存             */
     float  vo, v;
 } NetCache;
 
 void  net_config_default(int size, int *planes, int *channels, int *vhidden);
 void  net_init(Net *net, int size, int planes, int channels, int vhidden, uint64_t seed);
+/* 带残差块的版本：blocks = 0 时与 net_init 完全一致 */
+void  net_init_ex(Net *net, int size, int planes, int channels, int vhidden,
+                  int blocks, uint64_t seed);
 void  net_free(Net *net);
 int   net_param_count(const Net *net);
 float net_param_norm(const Net *net);
 void  net_zero_grad(const Net *net, float *grad);
+
+/* 把 src 中形状相同的参数段拷贝到 dst（给已有网络加残差块时用）*/
+void  net_copy_shared(Net *dst, const Net *src);
 
 void  net_cache_init(const Net *net, NetCache *c);
 void  net_cache_free(NetCache *c);

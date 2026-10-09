@@ -21,6 +21,7 @@ void search_init(Search *s, int size, const Net *net, uint64_t seed, double komi
     s->komi = komi;
     s->max_moves = 3 * size * size;
     s->pass_min_move = 2 * size;
+    s->pending_advance = -1;
     rng_seed(&s->rng, seed ? seed : 0xBADC0FFEEULL);
     s->cap_nodes = 4096;
     s->cap_edges = 4096;
@@ -83,6 +84,7 @@ static void reserve_edges(Search *s, int extra) {
 }
 
 static void search_reset(Search *s) {
+    s->root = 0;
     s->n_nodes = 0;
     s->n_edges = 0;
     new_node(s, M_NONE, 1.0f);
@@ -283,8 +285,24 @@ void search_apply_leaf(Search *s, int leaf, const Board *b, const float *policy,
     }
 }
 
+/* 树复用：把根前进到着法 move 对应的子节点。
+   返回 1 成功（该子节点已展开，可以接着搜），0 表示无法复用（调用方应重建）。 */
+int search_advance_root(Search *s, int move) {
+    if (move == M_PASS) return 0;
+    const Node *r = &s->nodes[s->root];
+    if (!r->expanded) return 0;
+    for (int i = 0; i < r->n_edges; i++) {
+        const Edge *e = &s->edges[r->first_edge + i];
+        if (e->move != move) continue;
+        if (e->child < 0 || !s->nodes[e->child].expanded) return 0;
+        if (s->nodes[e->child].terminal) return 0;
+        s->root = e->child;
+        return 1;
+    }
+    return 0;
+}
 int search_choose_move(Search *s, float temperature, Rng *rng) {
-    Node *root = &s->nodes[0];
+    Node *root = &s->nodes[s->root];
     if (root->n_edges <= 0) return M_PASS;
     if (temperature <= 1e-3f) {
         int best_visits = -1, best_move = s->edges[root->first_edge].move;
@@ -311,7 +329,7 @@ int search_choose_move(Search *s, float temperature, Rng *rng) {
 }
 
 void search_root_policy(const Search *s, float *policy_out) {
-    const Node *root = &s->nodes[0];
+    const Node *root = &s->nodes[s->root];
     const int nn = s->nn;
     for (int i = 0; i <= nn; i++) policy_out[i] = 0.0f;
     double total = 0.0;
@@ -327,7 +345,7 @@ void search_root_policy(const Search *s, float *policy_out) {
 }
 
 static void add_dirichlet_noise(Search *s, double alpha, double eps) {
-    Node *root = &s->nodes[0];
+    Node *root = &s->nodes[s->root];
     if (root->n_edges <= 0) return;
     float *noise = (float *)malloc((size_t)root->n_edges * sizeof(float));
     double sum = 0;
@@ -345,10 +363,17 @@ static void add_dirichlet_noise(Search *s, double alpha, double eps) {
 
 int search_run(Search *s, const Board *b0, int sims, float dirichlet_alpha, float noise_eps,
                float temperature, float *policy_out, float *root_value_out) {
-    search_reset(s);
+    /* 树复用：调用方走完一手后会设置 pending_advance，
+       这里优先前进到那棵子树；否则正常重建。 */
+    if (s->pending_advance >= 0) {
+        if (!search_advance_root(s, s->pending_advance)) search_reset(s);
+        s->pending_advance = -1;
+    } else {
+        search_reset(s);
+    }
     Board b = *b0;
     expand_and_evaluate(s, &b, 0);
-    Node *root = &s->nodes[0];
+    Node *root = &s->nodes[s->root];
 
     if (policy_out) {
         for (int i = 0; i <= s->nn; i++) policy_out[i] = 0.0f;
@@ -361,11 +386,11 @@ int search_run(Search *s, const Board *b0, int sims, float dirichlet_alpha, floa
     if (noise_eps > 0.0f && dirichlet_alpha > 0.0f) add_dirichlet_noise(s, dirichlet_alpha, noise_eps);
 
     for (int i = 0; i < sims; i++) {
-        s->nodes[0].visits++;
+        s->nodes[s->root].visits++;
         simulate(s, &b, 0);
         if (s->progress_done) *s->progress_done = i + 1;
     }
-    root = &s->nodes[0];                 /* simulate() may have reallocated the pool */
+    root = &s->nodes[s->root];                 /* simulate() may have reallocated the pool */
 
     int   total_visits = 0;
     float best_visits = -1.0f;
@@ -412,7 +437,7 @@ int search_run(Search *s, const Board *b0, int sims, float dirichlet_alpha, floa
 }
 
 void search_root_visits(const Search *s, int *out_counts) {
-    const Node *root = &s->nodes[0];
+    const Node *root = &s->nodes[s->root];
     for (int i = 0; i <= s->nn; i++) out_counts[i] = 0;
     if (root->n_edges <= 0) return;
     Board b;
