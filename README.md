@@ -120,10 +120,26 @@ python gpu/server.py --size 19 --channels 256 --device cuda --amp bf16 --max-bat
       --anchor versions/goai9x9_v3_33kgames.bin --anchor-every 10 --anchor-games 20 \
       --rollback 1 --rollback-patience 3 --out runs_v4
 
+### 训练效率测量（13 路 32 通道，160 模拟，10 线程）
+
+每轮 40 局 195 秒的耗时分布：
+
+| 阶段 | 耗时 | 占比 |
+|---|---|---|
+| 自对弈 | 162.6s | **84%** |
+| 梯度训练 | 11.3s | 6% |
+| 评估/晋级/锚点 | 19.6s | 10% |
+
+结论：
+- **瓶颈在自对弈**，不在训练（250 步梯度只占 6%）—— 所以"并行化反向传播"这类优化收益极小
+- 自对弈的并行度：单线程 25.8 秒/局 → 10 线程 4.07 秒/局，**加速 6.4 倍**
+  （M5 是 4 性能核 + 6 能效核，等效约 6 核，已接近硬件上限）
+- 想再快只能让**每次模拟更便宜**（编译优化 / SIMD / 树复用），而不是加线程
+
 ### train_log.csv 的列
 
 `iteration, games, positions, policy_loss, value_loss, param_norm, winrate_vs_random,`
-`gate_winrate, elapsed_s, lr, anchor_winrate`
+`gate_winrate, elapsed_s, lr, anchor_winrate, selfplay_s, train_s, eval_s`
 
 （`gate_winrate` = 对"当前最佳"的胜率，`-1` 表示这一轮没打；`anchor_winrate` 同理）
 
