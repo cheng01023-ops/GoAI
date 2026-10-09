@@ -101,6 +101,15 @@ goai_start() {
   mkdir -p "$GOAI_OUT"
   # 注意：goai_threads 在 $() 子 shell 里跑，export 传不出来，这里显式设一次
   [ "$(goai_intensity)" = "max" ] && export GOAI_FULLSPEED=1
+  # 实测：收敛后的网络用 0.005 会退化（锚点胜率掉到 35%），0.001 才能继续进步（75%）。
+  # 所以续训自动用微调学习率，全新训练才用初始学习率。
+  if [ -z "${GOAI_LR_SET:-}" ]; then
+    if [ -f "$GOAI_OUT/latest.bin" ]; then
+      GOAI_LR=0.001; export GOAI_LR
+    else
+      GOAI_LR=0.01;  export GOAI_LR
+    fi
+  fi
   if goai_running; then echo "训练已经在运行了（PID $(cat "$GOAI_PIDFILE")）"; return 1; fi
   echo "编译引擎…"
   ( cd "$GOAI_PROJ" && make -s all ) || { echo "❌ 编译失败，请查看上面的报错"; return 1; }
@@ -145,7 +154,8 @@ goai_start() {
     echo "   线程数 $threads · 强度：$(goai_intensity_name) · 供电：$(goai_power_note)"
     echo "   自对弈 $GOAI_GAMES 局/轮 · 每步 $GOAI_SIMS 次模拟 · 训练 $GOAI_STEPS 步/轮"
     echo "   评估 $GOAI_EVALGAMES 局/轮 · 每 $GOAI_GATE_EVERY 轮打一次晋级赛（$GOAI_GATEGAMES 局）"
-    echo "   学习率 $GOAI_LR 起，每 $GOAI_LR_DECAY_EVERY 轮 x$GOAI_LR_DECAY_FACTOR，下限 $GOAI_LR_MIN"
+    if [ -f "$GOAI_OUT/latest.bin" ]; then MODE=续训（微调）; else MODE=全新训练; fi
+    echo "   模式 $MODE · 学习率 $GOAI_LR 起，每 $GOAI_LR_DECAY_EVERY 轮 x$GOAI_LR_DECAY_FACTOR，下限 $GOAI_LR_MIN"
     echo "   锚点 $GOAI_ANCHOR · 每 $GOAI_ANCHOR_EVERY 轮评估 $GOAI_ANCHOR_GAMES 局 · 退化回滚 $GOAI_ROLLBACK_PATIENCE 次"
     if goai_fullspeed; then echo "   模式：满速（不加后台 QoS，会跟正常使用抢 CPU）"; else echo "   模式：礼貌（nice 低优先级 + 后台 QoS，你忙时自动让出性能核）"; fi
     echo "   日志 $GOAI_LOGFILE"
