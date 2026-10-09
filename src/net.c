@@ -304,30 +304,57 @@ void net_forward(const Net *net, NetCache *c, const float *x, float *policy, flo
 
 /* ---------------- layers: backward ---------------- */
 
+/* 优化的 3x3 反向：先把 ReLU 掩码应用到梯度上（一次分支判断），
+   之后所有内层循环都是无分支、连续访存的（可向量化）：
+     · 卷积核梯度 gw：对各 tap 做点积累加
+     · 输入梯度 din：对各 tap 做 axpy（复用前向的 NEON 版本）
+   gb 用一次求和代替逐像素累加。 */
 static void conv3x3_bwd(const float *w, const float *pre, const float *dact, const float *in,
                         int cin, int cout, int n, float *gw, float *gb, float *din) {
+    const int nn = n * n;
+    static _Thread_local float *dm = NULL;
+    static _Thread_local int dm_cap = 0;
+    if (nn > dm_cap) {
+        free(dm);
+        dm = (float *)malloc((size_t)nn * sizeof(float));
+        dm_cap = dm ? nn : 0;
+        if (!dm) return;
+    }
     for (int co = 0; co < cout; co++) {
-        for (int y = 0; y < n; y++) {
-            for (int x = 0; x < n; x++) {
-                const size_t oidx = (size_t)co * n * n + y * n + x;
-                float d = dact[oidx];
-                if (d == 0.0f) continue;
-                if (!(pre[oidx] > 0.0f)) continue;          /* ReLU derivative */
-                gb[co] += d;
-                for (int ci = 0; ci < cin; ci++) {
-                    const float *ip = in + (size_t)ci * n * n;
-                    float *gwp = gw + ((size_t)co * cin + ci) * 9;
-                    const float *wp = w + ((size_t)co * cin + ci) * 9;
-                    for (int dy = -1; dy <= 1; dy++) {
-                        const int yy = y + dy;
-                        if (yy < 0 || yy >= n) continue;
-                        for (int dx = -1; dx <= 1; dx++) {
-                            const int xx = x + dx;
-                            if (xx < 0 || xx >= n) continue;
-                            gwp[(dy + 1) * 3 + (dx + 1)] += d * ip[yy * n + xx];
-                            if (din) din[(size_t)ci * n * n + yy * n + xx] += d * wp[(dy + 1) * 3 + (dx + 1)];
+        const float *prec = pre + (size_t)co * nn;
+        const float *dacc = dact + (size_t)co * nn;
+        float gbsum = 0.0f;
+        for (int i = 0; i < nn; i++) {
+            const float v = (prec[i] > 0.0f) ? dacc[i] : 0.0f;
+            dm[i] = v;
+            gbsum += v;
+        }
+        gb[co] += gbsum;
+        for (int ci = 0; ci < cin; ci++) {
+            const float *k = w + ((size_t)co * cin + ci) * 9;
+            float *gwp = gw + ((size_t)co * cin + ci) * 9;
+            const float *src = in + (size_t)ci * nn;
+            float *dout = din ? din + (size_t)ci * nn : NULL;
+            for (int dy = -1; dy <= 1; dy++) {
+                const int ylo = dy < 0 ? -dy : 0;
+                const int yhi = dy > 0 ? n - 1 - dy : n - 1;
+                for (int dx = -1; dx <= 1; dx++) {
+                    const int tap = (dy + 1) * 3 + (dx + 1);
+                    const float kv = k[tap];
+                    const int xlo = dx < 0 ? -dx : 0;
+                    const int xhi = dx > 0 ? n - 1 - dx : n - 1;
+                    if (xlo > xhi) continue;
+                    float acc = 0.0f;
+                    for (int y = ylo; y <= yhi; y++) {
+                        const float *drow = dm + (size_t)y * n;
+                        const float *srow = src + (size_t)(y + dy) * n + dx;
+                        for (int x = xlo; x <= xhi; x++) acc += drow[x] * srow[x];
+                        if (dout) {
+                            float *orow = dout + (size_t)(y + dy) * n + dx;
+                            axpy_row(orow + xlo, drow + xlo, kv, xhi - xlo + 1);
                         }
                     }
+                    gwp[tap] += acc;
                 }
             }
         }
