@@ -31,3 +31,4 @@ DerivedData/
 .DS_Store
 runs_v2/games/
 runs_v2/iter_*.bin
+tools/autosync.log

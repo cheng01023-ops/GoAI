@@ -61,5 +61,11 @@ fi
 echo
 echo "✅ 完成！仓库地址： https://github.com/$USER/$NAME"
 echo
-echo "以后想同步：双击 sync-to-github.command（或已装好的自动同步会每 10 分钟检查一次）"
+printf "第 4 步：安装「改了就自动同步」后台任务？(y/n) "
+read -r AUTO
+if [ "$AUTO" = "y" ] || [ "$AUTO" = "Y" ]; then
+  bash tools/autosync.sh install
+fi
+echo
+echo "以后想手动同步：双击 2-同步更新到GitHub（双击）.command"
 printf "按回车关闭…"; read -r _
