@@ -169,6 +169,15 @@ int test_net_run(void) {
         Net net; NetCache c;
         net_init_ex(&net, size, P, C, H, BLOCKS, 77);
         CHECK(net.blocks == BLOCKS, "residual net has %d blocks", net.blocks);
+        /* 生产代码把残差块零初始化（块初始 = 恒等映射，保护预训练权重），
+           但零权重会让这些参数的梯度恒为 0、有限差分退化成噪声。
+           所以这里先把块权重随机化，再校验梯度数学。 */
+        {
+            Rng rw;
+            rng_seed(&rw, 4242);
+            for (int i = 0; i < net.len_bw; i++)
+                net.params[net.off_bw + i] = (float)(rng_normal(&rw) * 0.08);
+        }
         net_cache_init(&net, &c);
         const int nn = size * size, NP = nn + 1;
 

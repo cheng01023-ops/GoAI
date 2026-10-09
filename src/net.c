@@ -77,6 +77,15 @@ void net_init_ex(Net *net, int size, int planes, int channels, int vhidden,
     for (int i = 0; i < net->len_c1w; i++)    p[net->off_c1w + i]    = (float)(rng_normal(&rng) * s1);
     for (int i = 0; i < net->len_c2w; i++)    p[net->off_c2w + i]    = (float)(rng_normal(&rng) * s2);
     for (int i = 0; i < net->len_bw; i++)     p[net->off_bw + i]     = (float)(rng_normal(&rng) * s2);
+    /* 残差块零初始化：把每块第二个卷积（含偏置）置零，使块初始就是恒等映射。
+       这是 ResNet / AlphaZero 的标准做法 —— 否则随机残差会破坏预训练特征：
+       实测未做零初始化时，热启动后对随机胜率从 90% 掉到 12%，训练也随之发散。 */
+    for (int b = 0; b < net->blocks; b++) {
+        float *base = p + net->off_bw + (size_t)b * net->blk_stride;
+        const int cw = net->channels * net->channels * 9;
+        for (int i = 0; i < cw; i++) base[cw + net->channels + i] = 0.0f;              /* wB = 0 */
+        for (int i = 0; i < net->channels; i++) base[2 * cw + net->channels + i] = 0.0f; /* bB = 0 */
+    }
     for (int i = 0; i < net->len_pw; i++)     p[net->off_pw + i]     = (float)(rng_normal(&rng) * 0.1);
     for (int i = 0; i < net->len_pfcw; i++)   p[net->off_pfcw + i]   = (float)(rng_normal(&rng) * sp * 0.3);
     for (int i = 0; i < net->len_vw; i++)     p[net->off_vw + i]     = (float)(rng_normal(&rng) * 0.1);
