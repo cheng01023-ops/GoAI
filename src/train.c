@@ -509,7 +509,7 @@ int train_run(const TrainConfig *cfgin) {
     FILE *csv = fopen(path, "a");
     if (csv && !log_has_header) {
         fprintf(csv, "iteration,games,positions,policy_loss,value_loss,param_norm,"
-                     "winrate_vs_random,gate_winrate,elapsed_s,lr,anchor_winrate\n");
+                     "winrate_vs_random,gate_winrate,elapsed_s,lr,anchor_winrate,selfplay_s,train_s,eval_s\n");
         fflush(csv);
     }
 
@@ -628,9 +628,13 @@ int train_run(const TrainConfig *cfgin) {
         }
 
         float pl = 0, vl = 0;
+        const double t_sp = goai_now() - t_iter0;   /* 阶段 1：自对弈 */
+        const double t_tr0 = goai_now();
         t.lr = train_lr_at_iter(&cfg, iter);      /* 学习率衰减计划 */
         train_gradient_steps(&t, &cfg, cfg.train_steps, &pl, &vl);
 
+        const double t_tr = goai_now() - t_tr0;     /* 阶段 2：梯度训练 */
+        const double t_ev0 = goai_now();
         EngineSpec me  = { &t.net, cfg.eval_sims, 0 };
         EngineSpec rnd = { NULL, 0, 1 };
         int wa = 0, wb = 0, dr = 0;
@@ -699,12 +703,16 @@ int train_run(const TrainConfig *cfgin) {
             net_free(&best);
         }
 
+        const double t_ev = goai_now() - t_ev0;     /* 阶段 3：评估/晋级/锚点 */
         total_games += cfg.games_per_iter;
         const double el = goai_now() - t_iter0;
         const double total_el = goai_now() - t_run0;
         printf("──────────────────────────────────────────────────────────────\n");
         printf("  第 %d 轮完成 · 自对弈 %d 局 / %d 局面 · 用时 %.1fs\n",
                iter, cfg.games_per_iter, positions, el);
+        if (el > 0.0)
+            printf("  耗时分布：自对弈 %.1fs (%.0f%%) · 训练 %.1fs (%.0f%%) · 评估 %.1fs (%.0f%%)\n",
+                   t_sp, 100.0 * t_sp / el, t_tr, 100.0 * t_tr / el, t_ev, 100.0 * t_ev / el);
         printf("  策略损失 %.4f · 价值损失 %.4f · 对随机胜率 %.1f%%",
                pl, vl, wr * 100.0);
         printf(" · 学习率 %.5f", t.lr);
@@ -716,9 +724,9 @@ int train_run(const TrainConfig *cfgin) {
         fflush(stdout);
 
         if (csv) {
-            fprintf(csv, "%d,%d,%d,%.5f,%.5f,%.4f,%.4f,%.4f,%.2f,%.6f,%.4f\n",
+            fprintf(csv, "%d,%d,%d,%.5f,%.5f,%.4f,%.4f,%.4f,%.2f,%.6f,%.4f,%.2f,%.2f,%.2f\n",
                     iter, cfg.games_per_iter, positions, pl, vl, net_param_norm(&t.net), wr, gw, el,
-                    t.lr, aw);
+                    t.lr, aw, t_sp, t_tr, t_ev);
             fflush(csv);
         }
         {
