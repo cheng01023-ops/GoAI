@@ -142,3 +142,9 @@ ns_blk2/  （latest.bin / best.bin / train_log.csv / status.txt）
 收到停止请求：本轮只跑了部分对局，直接保存当前权重后退出。
 
 训练已停止（共 0 轮 / 1800 局 / 2.5 分钟），权重保存在 runs_blk2/latest.bin
+继续训练：已载入 runs_blk2/latest.bin
+=== GoAI 持续自我迭代训练 ===
+  棋盘 13x13 · 32 通道 · 每步 160 次模拟 · 每轮 100 局 · 10 线程
+  输出目录 runs_blk2/  （latest.bin / best.bin / train_log.csv / status.txt）
+  学习率计划：0.00100 起，每 40 轮 ×0.90，下限 0.00005
+  模式：持续训练（随时可停止，停止时会保存权重）
