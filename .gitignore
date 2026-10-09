@@ -34,3 +34,5 @@ runs_v2/iter_*.bin
 tools/autosync.log
 runs_v*/
 runs13/
+runs_blk/
+runs_blk2/
