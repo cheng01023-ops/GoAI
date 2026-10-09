@@ -9,6 +9,10 @@
  * Everything (forward AND backward) is implemented by hand with plain loops.
  */
 #include "net.h"
+
+#if defined(__ARM_NEON) || defined(__ARM_NEON__)
+#  include <arm_neon.h>
+#endif
 #include "compat.h"
 
 #include <math.h>
@@ -125,6 +129,21 @@ void net_cache_free(NetCache *c) {
 
 /* ---------------- layers: forward ---------------- */
 
+/* 行内 axpy：acc[i] += kv * src[i]。ARM 上用手写 NEON（4 宽 FMA），   其他平台退回标量循环（编译器同样能向量化）。 */
+static inline void axpy_row(float *acc, const float *src, float kv, int len) {
+#if defined(__ARM_NEON) || defined(__ARM_NEON__)
+    const float32x4_t kvv = vdupq_n_f32(kv);
+    int i = 0;
+    for (; i + 4 <= len; i += 4) {
+        const float32x4_t a = vld1q_f32(acc + i);
+        const float32x4_t b = vld1q_f32(src + i);
+        vst1q_f32(acc + i, vfmaq_f32(a, b, kvv));
+    }
+    for (; i < len; i++) acc[i] += kv * src[i];
+#else
+    for (int i = 0; i < len; i++) acc[i] += kv * src[i];
+#endif
+}
 static void conv3x3_fwd(const float *w, const float *bias, const float *in, int cin, int cout,
                         int n, float *pre, float *act) {
     /* 优化版 v2：把 3x3 卷积拆成 9 个 tap，每个 tap 对整行做 axpy。
@@ -150,8 +169,7 @@ static void conv3x3_fwd(const float *w, const float *bias, const float *in, int 
                     for (int y = ylo; y <= yhi; y++) {
                         const float *srow = src + (size_t)(y + dy) * n + dx;
                         float *arow = acc + (size_t)y * n;
-                        for (int x = xlo; x <= xhi; x++)
-                            arow[x] += kv * srow[x];
+                        axpy_row(arow + xlo, srow + xlo, kv, xhi - xlo + 1);
                     }
                 }
             }
