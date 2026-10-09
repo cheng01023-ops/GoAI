@@ -1,6 +1,11 @@
 # GoAI - Makefile (the Xcode project builds the same sources)
 CC      ?= clang
-CFLAGS  ?= -O3 -ffast-math -pthread -std=c11 -Wall -Wextra -Wno-unused-parameter -Iinclude -MMD -MP -DGOAI_ENABLE_SOCKETS
+# 本机训练可以加 NATIVE=1 启用 -march=native（快 10~30%，但生成的二进制不能跨机器）
+# 例： make clean && make NATIVE=1 all
+ifeq ($(NATIVE),1)
+  NATIVE_FLAGS := -march=native -mtune=native
+endif
+CFLAGS  ?= $(NATIVE_FLAGS) -O3 -ffast-math -pthread -std=c11 -Wall -Wextra -Wno-unused-parameter -Iinclude -MMD -MP -DGOAI_ENABLE_SOCKETS
 TESTFLAGS ?= -O2 -pthread -std=c11 -Wall -Wextra -Wno-unused-parameter -Iinclude -MMD -MP
 LDLIBS  ?= -lm
 BUILD   := build
