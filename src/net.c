@@ -127,29 +127,50 @@ void net_cache_free(NetCache *c) {
 
 static void conv3x3_fwd(const float *w, const float *bias, const float *in, int cin, int cout,
                         int n, float *pre, float *act) {
+    /* 优化版：按 (输出通道, 输入通道) 配对累加整张输出平面。
+       · 内部像素走无分支快路径（13 路时占 72%），边界像素单独处理
+       · 累加平面只有 nn 个 float（13 路 676 字节），常驻 L1
+       · 内层循环对连续 x 可被编译器自动向量化 */
+    const int nn = n * n;
     for (int co = 0; co < cout; co++) {
+        float *acc = pre + (size_t)co * nn;
         const float b = bias[co];
-        for (int y = 0; y < n; y++) {
-            for (int x = 0; x < n; x++) {
-                float s = b;
-                for (int ci = 0; ci < cin; ci++) {
-                    const float *ip = in + (size_t)ci * n * n;
-                    const float *wp = w + ((size_t)co * cin + ci) * 9;
-                    for (int dy = -1; dy <= 1; dy++) {
-                        const int yy = y + dy;
-                        if (yy < 0 || yy >= n) continue;
-                        for (int dx = -1; dx <= 1; dx++) {
-                            const int xx = x + dx;
-                            if (xx < 0 || xx >= n) continue;
-                            s += wp[(dy + 1) * 3 + (dx + 1)] * ip[yy * n + xx];
-                        }
-                    }
+        for (int i = 0; i < nn; i++) acc[i] = b;
+        for (int ci = 0; ci < cin; ci++) {
+            const float *k = w + ((size_t)co * cin + ci) * 9;
+            const float *src = in + (size_t)ci * nn;
+            const float k0 = k[0], k1 = k[1], k2 = k[2];
+            const float k3 = k[3], k4 = k[4], k5 = k[5];
+            const float k6 = k[6], k7 = k[7], k8 = k[8];
+            for (int y = 1; y < n - 1; y++) {
+                const float *row = src + (size_t)y * n;
+                float *arow = acc + (size_t)y * n;
+                for (int x = 1; x < n - 1; x++) {
+                    const float *p = row + x;
+                    arow[x] += k0 * p[-n - 1] + k1 * p[-n] + k2 * p[-n + 1]
+                             + k3 * p[-1]     + k4 * p[0]  + k5 * p[1]
+                             + k6 * p[n - 1]  + k7 * p[n]  + k8 * p[n + 1];
                 }
-                const size_t idx = (size_t)co * n * n + y * n + x;
-                pre[idx] = s;
-                act[idx] = s > 0.0f ? s : 0.0f;
+            }
+            for (int y = 0; y < n; y++) {
+                const int y0 = (y > 0) ? y - 1 : 0;
+                const int y1 = (y < n - 1) ? y + 1 : n - 1;
+                for (int x = 0; x < n; x++) {
+                    if (x > 0 && x < n - 1 && y > 0 && y < n - 1) continue;
+                    const int x0 = (x > 0) ? x - 1 : 0;
+                    const int x1 = (x < n - 1) ? x + 1 : n - 1;
+                    float s = 0.0f;
+                    for (int yy = y0; yy <= y1; yy++) {
+                        const float *srow = src + (size_t)yy * n;
+                        for (int xx = x0; xx <= x1; xx++)
+                            s += k[(yy - y + 1) * 3 + (xx - x + 1)] * srow[xx];
+                    }
+                    acc[(size_t)y * n + x] += s;
+                }
             }
         }
+        float *a = act + (size_t)co * nn;
+        for (int i = 0; i < nn; i++) { const float s = acc[i]; a[i] = s > 0.0f ? s : 0.0f; }
     }
 }
 
