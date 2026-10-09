@@ -123,6 +123,23 @@ C 版不依赖任何框架，任何机器 clone 下来就能跑。PyTorch 版（
 
 ## 自动同步到 GitHub
 
+改代码后自动推送（macOS）：
+
+   双击 启动自动同步.command        # 开一个终端窗口守着，每 60 秒检查一次，有改动就推送
+   （关掉窗口或 Ctrl+C 停止）
+
+手动同步：双击 sync-to-github.command，或运行 bash tools/sync_github.sh
+
+> **为什么不用 macOS 后台任务（launchd）？**
+> macOS 的安全机制（TCC）不允许后台任务读取「文档 / 桌面 / 下载」目录下的文件，
+> 放在这些目录里的项目用 launchd 会报 Operation not permitted。
+> 终端窗口有权限，所以自动同步做成终端守护进程。若把项目放在 `~/GoAI` 这类非受保护目录，
+> 也可以用 `bash tools/autosync.sh install --force` 装成开机后台任务。
+>
+> Windows / Linux：把 `tools/sync_github.sh` 加进任务计划程序或 cron 即可，逻辑一样。
+
+## 原来的自动同步到 GitHub
+
 本仓库自带"改了代码就自动推送"的机制（macOS）：
 
     bash tools/autosync.sh install     # 安装后台任务（只需一次）
