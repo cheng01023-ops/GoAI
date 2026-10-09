@@ -1,0 +1,2 @@
+trained_vs_initial wins=24 losses=0 draws=0 games=24 winrate=1.0000
+trained_vs_random_winrate=0.8333

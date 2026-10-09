@@ -1,0 +1,13 @@
+{
+  "folders": [
+    { "path": "." }
+  ],
+  "settings": {
+    "C_Cpp.default.cStandard": "c11",
+    "C_Cpp.default.includePath": ["${workspaceFolder}/include"],
+    "files.associations": { "*.h": "c" }
+  },
+  "extensions": {
+    "recommendations": ["ms-vscode.cpptools", "ms-vscode.makefile-tools"]
+  }
+}

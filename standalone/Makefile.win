@@ -1,0 +1,27 @@
+# Windows（MinGW-w64 / MSYS2 / w64devkit）
+#   mingw32-make -f Makefile.win goboard
+# 文本界面，不需要 ncurses / pthread，只要有 gcc
+CC      ?= gcc
+CFLAGS  ?= -O3 -ffast-math -std=c11 -Wall -Wextra -Wno-unused-parameter
+DEFS    := -DGOAI_NO_CURSES
+INC     := -Iinclude
+SRC     := src/goboard.c src/board.c src/compat.c src/net.c src/mcts.c
+BUILD   := build
+
+.PHONY: all goboard run test clean
+
+all: goboard
+
+goboard: GoBoard.exe
+
+GoBoard.exe: $(SRC)
+	$(CC) $(CFLAGS) $(DEFS) $(INC) $(SRC) -o $@ -lm
+
+run: GoBoard.exe
+	GoBoard.exe --sims 200
+
+test: GoBoard.exe
+	GoBoard.exe --selftest --sims 40
+
+clean:
+	-del /q GoBoard.exe 2>nul

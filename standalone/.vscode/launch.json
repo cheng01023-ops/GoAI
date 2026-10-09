@@ -1,0 +1,50 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "▶ 对弈（Windows）",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}/GoBoard.exe",
+      "args": ["--sims", "200"],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "MIMode": "gdb",
+      "miDebuggerPath": "gdb.exe",
+      "preLaunchTask": "编译（Windows / 文本界面）",
+      "setupCommands": [{ "description": "enable pretty printing", "text": "-enable-pretty-printing", "ignoreFailures": true }]
+    },
+    {
+      "name": "▶ 对弈（macOS / Linux，全屏棋盘）",
+      "type": "lldb",
+      "request": "launch",
+      "program": "${workspaceFolder}/build/GoBoard",
+      "args": ["--sims", "200"],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "preLaunchTask": "编译（macOS / Linux / 全屏界面）"
+    },
+    {
+      "name": "▶ 对弈（macOS / Linux，文本界面）",
+      "type": "lldb",
+      "request": "launch",
+      "program": "${workspaceFolder}/build/GoBoard-text",
+      "args": ["--sims", "200"],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "preLaunchTask": "编译（macOS / Linux / 文本界面）"
+    },
+    {
+      "name": "你执白 + 让 4 子",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}/GoBoard.exe",
+      "args": ["--white", "--handicap", "4", "--sims", "200"],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "MIMode": "gdb",
+      "miDebuggerPath": "gdb.exe",
+      "preLaunchTask": "编译（Windows / 文本界面）"
+    }
+  ]
+}

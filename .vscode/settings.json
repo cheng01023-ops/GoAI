@@ -1,0 +1,7 @@
+{
+  "C_Cpp.default.cStandard": "c11",
+  "C_Cpp.default.includePath": ["${workspaceFolder}/include"],
+  "files.associations": { "*.h": "c" },
+  "terminal.integrated.cwd": "${workspaceFolder}",
+  "files.exclude": { "**/build": false, "**/__pycache__": true, "**/.venv": true }
+}

@@ -1,0 +1,8 @@
+{
+  "folders": [{ "path": "." }],
+  "settings": {
+    "C_Cpp.default.cStandard": "c11",
+    "C_Cpp.default.includePath": ["${workspaceFolder}/include"]
+  },
+  "extensions": { "recommendations": ["ms-vscode.cpptools"] }
+}

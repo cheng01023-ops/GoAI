@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.goai.autosync</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>__REPO__/tools/sync_github.sh</string>
+        <string>自动同步</string>
+    </array>
+    <!-- 源码目录一有改动就触发 -->
+    <key>WatchPaths</key>
+    <array>
+        <string>__REPO__/src</string>
+        <string>__REPO__/include</string>
+        <string>__REPO__/tests</string>
+        <string>__REPO__/tools</string>
+        <string>__REPO__/gpu</string>
+        <string>__REPO__/standalone</string>
+        <string>__REPO__/versions</string>
+    </array>
+    <!-- 兜底：每 10 分钟检查一次 -->
+    <key>StartInterval</key>
+    <integer>600</integer>
+    <key>ThrottleInterval</key>
+    <integer>120</integer>
+    <key>RunAtLoad</key>
+    <false/>
+    <key>StandardOutPath</key>
+    <string>/tmp/goai-autosync.out</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/goai-autosync.err</string>
+</dict>
+</plist>

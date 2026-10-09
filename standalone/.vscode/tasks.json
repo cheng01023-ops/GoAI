@@ -1,0 +1,38 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "编译（Windows / 文本界面）",
+      "type": "shell",
+      "command": "gcc",
+      "args": ["-O3", "-ffast-math", "-std=c11", "-DGOAI_NO_CURSES", "-Iinclude",
+               "src/goboard.c", "src/board.c", "src/compat.c", "src/net.c", "src/mcts.c",
+               "-o", "GoBoard.exe", "-lm"],
+      "group": { "kind": "build", "isDefault": true },
+      "problemMatcher": ["$gcc"],
+      "detail": "Windows：不需要 ncurses/pthread，只要有 gcc"
+    },
+    {
+      "label": "编译（macOS / Linux / 全屏界面）",
+      "type": "shell",
+      "command": "make",
+      "args": ["goboard"],
+      "problemMatcher": ["$gcc"],
+      "detail": "需要 ncurses（macOS 自带）"
+    },
+    {
+      "label": "编译（macOS / Linux / 文本界面）",
+      "type": "shell",
+      "command": "make",
+      "args": ["goboard-text"],
+      "problemMatcher": ["$gcc"]
+    },
+    {
+      "label": "运行自检（AI 自对弈，不用交互）",
+      "type": "shell",
+      "command": "${workspaceFolder}/build/GoBoard",
+      "args": ["--selftest", "--sims", "60"],
+      "problemMatcher": []
+    }
+  ]
+}

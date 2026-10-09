@@ -1,0 +1,43 @@
+# GoAI - Windows 构建（MSYS2 / MinGW-w64 或 WSL 里的 make）
+# 用法：  make -f Makefile.win
+CC      ?= gcc
+CFLAGS  ?= -O3 -ffast-math -pthread -std=c11 -Wall -Wextra -Wno-unused-parameter -Iinclude -DGOAI_ENABLE_SOCKETS
+LDLIBS  ?= -lm -pthread -lws2_32
+BUILD   := build
+
+SRC      := src/board.c src/compat.c src/net.c src/mcts.c src/sockets.c src/remote.c src/gplay.c src/train.c src/apps.c
+OBJ      := $(SRC:src/%.c=$(BUILD)/%.o) $(BUILD)/main.o
+TESTSRC  := tests/test_main.c tests/test_board.c tests/test_rng.c tests/test_net.c tests/test_mcts.c
+TESTOBJ  := $(TESTSRC:tests/%.c=$(BUILD)/test_%.o) $(BUILD)/board.o $(BUILD)/compat.o $(BUILD)/net.o $(BUILD)/mcts.o
+
+.PHONY: all test clean
+
+all: $(BUILD)/GoAI.exe
+
+$(BUILD):
+	@mkdir -p $(BUILD)
+
+$(BUILD)/%.o: src/%.c | $(BUILD)
+	$(CC) $(CFLAGS) -c $< -o $@
+
+$(BUILD)/test_%.o: tests/%.c | $(BUILD)
+	$(CC) $(CFLAGS) -c $< -o $@
+
+$(BUILD)/GoAI.exe: $(OBJ)
+	$(CC) $(OBJ) -o $@ $(LDLIBS)
+
+GOBOARD_OBJ := $(BUILD)/goboard.o $(BUILD)/board.o $(BUILD)/compat.o $(BUILD)/net.o $(BUILD)/mcts.o
+
+goboard: $(BUILD)/GoBoard.exe
+
+$(BUILD)/GoBoard.exe: $(GOBOARD_OBJ)
+	$(CC) $(GOBOARD_OBJ) -o $@ $(LDLIBS) -lncurses
+
+$(BUILD)/GoAITests.exe: $(TESTOBJ)
+	$(CC) $(TESTOBJ) -o $@ $(LDLIBS)
+
+test: $(BUILD)/GoAITests.exe
+	./$(BUILD)/GoAITests.exe
+
+clean:
+	rm -rf $(BUILD)

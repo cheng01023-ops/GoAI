@@ -1,0 +1,469 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 54;
+	objects = {
+
+		AB28D630906682470BBB506E /* board.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "board.c"; sourceTree = "<group>"; };
+
+		97367230D4827557EA53F4FF /* compat.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "compat.c"; sourceTree = "<group>"; };
+
+		A063204B213FAB37BDDD39B9 /* net.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "net.c"; sourceTree = "<group>"; };
+
+		B572D909D0E83AFBF20BF876 /* mcts.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "mcts.c"; sourceTree = "<group>"; };
+
+		3C5876186192AC24C4826E87 /* remote.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "remote.c"; sourceTree = "<group>"; };
+
+		7B7FB9791CD1E7D35079E110 /* gplay.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "gplay.c"; sourceTree = "<group>"; };
+
+		67EF085EE49E5613AA906956 /* train.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "train.c"; sourceTree = "<group>"; };
+
+		0CEAAA6E05626C5ED4A11DE6 /* apps.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "apps.c"; sourceTree = "<group>"; };
+
+		E976B96BCEA821B0201CF3A8 /* main.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "main.c"; sourceTree = "<group>"; };
+
+		D396B45C2ED98ED4DE82E2D7 /* board.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "board.h"; sourceTree = "<group>"; };
+
+		3108535259FFAC5DEB44C347 /* compat.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "compat.h"; sourceTree = "<group>"; };
+
+		1393B78106070A5414DA05D2 /* rand.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "rand.h"; sourceTree = "<group>"; };
+
+		41189B39B52B7D991C39981D /* net.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "net.h"; sourceTree = "<group>"; };
+
+		39B45A95C156C2D022545FDF /* mcts.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "mcts.h"; sourceTree = "<group>"; };
+
+		8860BDA9F559B6E63344D637 /* remote.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "remote.h"; sourceTree = "<group>"; };
+
+		5CF320AF16466F8846C5CB42 /* gplay.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "gplay.h"; sourceTree = "<group>"; };
+
+		B3CFB597D4E29F4D9A74E956 /* train.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "train.h"; sourceTree = "<group>"; };
+
+		0327D7E571BCE258BBCF54D9 /* apps.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "apps.h"; sourceTree = "<group>"; };
+
+		CEE686D76AD39115A6C59AD5 /* test_main.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "test_main.c"; sourceTree = "<group>"; };
+
+		CADBDD2BA95744E57D9B2E06 /* test_board.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "test_board.c"; sourceTree = "<group>"; };
+
+		10CF48BE64A3DF6B329199D1 /* test_rng.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "test_rng.c"; sourceTree = "<group>"; };
+
+		416CC7BA4AA33221AAD1CFED /* test_net.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "test_net.c"; sourceTree = "<group>"; };
+
+		123381E6FC59DDF4A40DFD3B /* test_mcts.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "test_mcts.c"; sourceTree = "<group>"; };
+
+		D8CB41429B9888E91CF56571 /* goboard.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "goboard.c"; sourceTree = "<group>"; };
+
+		C0E88EC67434089507408E30 /* board.c in Sources */ = {isa = PBXBuildFile; fileRef = AB28D630906682470BBB506E /* board.c */; };
+
+		45E9639E243AD0CC7F30C210 /* compat.c in Sources */ = {isa = PBXBuildFile; fileRef = 97367230D4827557EA53F4FF /* compat.c */; };
+
+		636D04D395B34439D436A05F /* net.c in Sources */ = {isa = PBXBuildFile; fileRef = A063204B213FAB37BDDD39B9 /* net.c */; };
+
+		D5015DB7028981FEF9EE607C /* mcts.c in Sources */ = {isa = PBXBuildFile; fileRef = B572D909D0E83AFBF20BF876 /* mcts.c */; };
+
+		DE91AA0BD343700A7B2BAD65 /* remote.c in Sources */ = {isa = PBXBuildFile; fileRef = 3C5876186192AC24C4826E87 /* remote.c */; };
+
+		77B014CB9E738083EF0A1A73 /* gplay.c in Sources */ = {isa = PBXBuildFile; fileRef = 7B7FB9791CD1E7D35079E110 /* gplay.c */; };
+
+		FD0C7EC4842E687BF7D2972E /* train.c in Sources */ = {isa = PBXBuildFile; fileRef = 67EF085EE49E5613AA906956 /* train.c */; };
+
+		E4369C72574F3A50BFEABA48 /* apps.c in Sources */ = {isa = PBXBuildFile; fileRef = 0CEAAA6E05626C5ED4A11DE6 /* apps.c */; };
+
+		0502C27269E809A21F8E5DA7 /* main.c in Sources */ = {isa = PBXBuildFile; fileRef = E976B96BCEA821B0201CF3A8 /* main.c */; };
+
+		4A73DF3251D66497A8C4C0FB /* test_main.c in Sources */ = {isa = PBXBuildFile; fileRef = CEE686D76AD39115A6C59AD5 /* test_main.c */; };
+
+		1801087E8600100C3D98738F /* test_board.c in Sources */ = {isa = PBXBuildFile; fileRef = CADBDD2BA95744E57D9B2E06 /* test_board.c */; };
+
+		394BA6862A6E8A302363D2E4 /* test_rng.c in Sources */ = {isa = PBXBuildFile; fileRef = 10CF48BE64A3DF6B329199D1 /* test_rng.c */; };
+
+		334664140F03B1B894CC80A0 /* test_net.c in Sources */ = {isa = PBXBuildFile; fileRef = 416CC7BA4AA33221AAD1CFED /* test_net.c */; };
+
+		1EEEA419A0C7D18E2A9FA8A3 /* test_mcts.c in Sources */ = {isa = PBXBuildFile; fileRef = 123381E6FC59DDF4A40DFD3B /* test_mcts.c */; };
+
+		855B5184ECCFED978DA4E2BA /* board.c in Sources */ = {isa = PBXBuildFile; fileRef = AB28D630906682470BBB506E /* board.c */; };
+
+		43AC26BF67DFC3AFB5D6978D /* compat.c in Sources */ = {isa = PBXBuildFile; fileRef = 97367230D4827557EA53F4FF /* compat.c */; };
+
+		B917B92DA51970380CD3DE1B /* net.c in Sources */ = {isa = PBXBuildFile; fileRef = A063204B213FAB37BDDD39B9 /* net.c */; };
+
+		FB02668262F18FCFF5E5FF16 /* mcts.c in Sources */ = {isa = PBXBuildFile; fileRef = B572D909D0E83AFBF20BF876 /* mcts.c */; };
+
+		37947DCAFA51E5EB8E6AB529 /* goboard.c in Sources */ = {isa = PBXBuildFile; fileRef = D8CB41429B9888E91CF56571 /* goboard.c */; };
+
+		3BFF11AF19216E871FC035EC /* board.c in Sources */ = {isa = PBXBuildFile; fileRef = AB28D630906682470BBB506E /* board.c */; };
+
+		FD113E7D530D803573261CC4 /* compat.c in Sources */ = {isa = PBXBuildFile; fileRef = 97367230D4827557EA53F4FF /* compat.c */; };
+
+		B74C8CFF06DD792D3868CF36 /* net.c in Sources */ = {isa = PBXBuildFile; fileRef = A063204B213FAB37BDDD39B9 /* net.c */; };
+
+		2B136C9D76514B07E0DBBF8C /* mcts.c in Sources */ = {isa = PBXBuildFile; fileRef = B572D909D0E83AFBF20BF876 /* mcts.c */; };
+
+		1129B6A53940C88B539F2B2B /* src */ = {
+			isa = PBXGroup;
+			children = (
+				AB28D630906682470BBB506E /* board.c */,
+				97367230D4827557EA53F4FF /* compat.c */,
+				A063204B213FAB37BDDD39B9 /* net.c */,
+				B572D909D0E83AFBF20BF876 /* mcts.c */,
+				3C5876186192AC24C4826E87 /* remote.c */,
+				7B7FB9791CD1E7D35079E110 /* gplay.c */,
+				67EF085EE49E5613AA906956 /* train.c */,
+				0CEAAA6E05626C5ED4A11DE6 /* apps.c */,
+				E976B96BCEA821B0201CF3A8 /* main.c */,
+				D8CB41429B9888E91CF56571 /* goboard.c */,
+			);
+			path = src;
+			sourceTree = "<group>";
+		};
+
+		49D752A6F5BF00845D1D61E3 /* include */ = {
+			isa = PBXGroup;
+			children = (
+				D396B45C2ED98ED4DE82E2D7 /* board.h */,
+				3108535259FFAC5DEB44C347 /* compat.h */,
+				1393B78106070A5414DA05D2 /* rand.h */,
+				41189B39B52B7D991C39981D /* net.h */,
+				39B45A95C156C2D022545FDF /* mcts.h */,
+				8860BDA9F559B6E63344D637 /* remote.h */,
+				5CF320AF16466F8846C5CB42 /* gplay.h */,
+				B3CFB597D4E29F4D9A74E956 /* train.h */,
+				0327D7E571BCE258BBCF54D9 /* apps.h */,
+			);
+			path = include;
+			sourceTree = "<group>";
+		};
+
+		A0937472EE5878FA82CB0F7E /* tests */ = {
+			isa = PBXGroup;
+			children = (
+				CEE686D76AD39115A6C59AD5 /* test_main.c */,
+				CADBDD2BA95744E57D9B2E06 /* test_board.c */,
+				10CF48BE64A3DF6B329199D1 /* test_rng.c */,
+				416CC7BA4AA33221AAD1CFED /* test_net.c */,
+				123381E6FC59DDF4A40DFD3B /* test_mcts.c */,
+			);
+			path = tests;
+			sourceTree = "<group>";
+		};
+
+		547D009064F7C3F13BEF3460 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				14B9F2706679085CDDADB902 /* 14B9F2706679085CDDADB902 */,
+				5F67AAE25BC4B94E88D9AFF8 /* 5F67AAE25BC4B94E88D9AFF8 */,
+				18FACBD34C024A4024BC7FE0 /* 18FACBD34C024A4024BC7FE0 */,
+			);
+			sourceTree = "<group>";
+		};
+
+		547D009064F7C3F13BEF3460 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				14B9F2706679085CDDADB902 /* GoAI */,
+				5F67AAE25BC4B94E88D9AFF8 /* GoAITests */,
+				18FACBD34C024A4024BC7FE0 /* GoBoard */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+
+		518DA81DB9B99529C0C0AEBE = {
+			isa = PBXGroup;
+			children = (
+				1129B6A53940C88B539F2B2B /* src */,
+				49D752A6F5BF00845D1D61E3 /* include */,
+				A0937472EE5878FA82CB0F7E /* tests */,
+				547D009064F7C3F13BEF3460 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+
+		14B9F2706679085CDDADB902 /* GoAI */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = GoAI; sourceTree = BUILT_PRODUCTS_DIR; };
+
+		5F67AAE25BC4B94E88D9AFF8 /* GoAITests */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = GoAITests; sourceTree = BUILT_PRODUCTS_DIR; };
+
+		18FACBD34C024A4024BC7FE0 /* GoBoard */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = GoBoard; sourceTree = BUILT_PRODUCTS_DIR; };
+
+		718B35857FBE3E5A2CE373B9 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+
+		1721F7574E8321B99787A4A2 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+
+		ED0D3560A361B353A4D42A3A /* Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+
+		C8EA5B3C23F0559FC4577DC3 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C0E88EC67434089507408E30 /* board.c in Sources */,
+				45E9639E243AD0CC7F30C210 /* compat.c in Sources */,
+				636D04D395B34439D436A05F /* net.c in Sources */,
+				D5015DB7028981FEF9EE607C /* mcts.c in Sources */,
+				DE91AA0BD343700A7B2BAD65 /* remote.c in Sources */,
+				77B014CB9E738083EF0A1A73 /* gplay.c in Sources */,
+				FD0C7EC4842E687BF7D2972E /* train.c in Sources */,
+				E4369C72574F3A50BFEABA48 /* apps.c in Sources */,
+				0502C27269E809A21F8E5DA7 /* main.c in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+
+		52670A73A2ABD6CB424E3AC1 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				4A73DF3251D66497A8C4C0FB /* test_main.c in Sources */,
+				1801087E8600100C3D98738F /* test_board.c in Sources */,
+				394BA6862A6E8A302363D2E4 /* test_rng.c in Sources */,
+				334664140F03B1B894CC80A0 /* test_net.c in Sources */,
+				1EEEA419A0C7D18E2A9FA8A3 /* test_mcts.c in Sources */,
+				855B5184ECCFED978DA4E2BA /* board.c in Sources */,
+				43AC26BF67DFC3AFB5D6978D /* compat.c in Sources */,
+				B917B92DA51970380CD3DE1B /* net.c in Sources */,
+				FB02668262F18FCFF5E5FF16 /* mcts.c in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+
+		B37B72DDF29223E8EC8DE97A /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				37947DCAFA51E5EB8E6AB529 /* goboard.c in Sources */,
+				3BFF11AF19216E871FC035EC /* board.c in Sources */,
+				FD113E7D530D803573261CC4 /* compat.c in Sources */,
+				B74C8CFF06DD792D3868CF36 /* net.c in Sources */,
+				2B136C9D76514B07E0DBBF8C /* mcts.c in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+
+		06125DCB1954C4F7EEE69894 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				GCC_C_LANGUAGE_STANDARD = c11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				HEADER_SEARCH_PATHS = "$(SRCROOT)/include";
+				MACOSX_DEPLOYMENT_TARGET = 12.0;
+				SDKROOT = macosx;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_TESTABILITY = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				ONLY_ACTIVE_ARCH = YES;
+			};
+			name = Debug;
+		};
+
+		AACF5BDB2BC481EB947517D5 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				GCC_C_LANGUAGE_STANDARD = c11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				HEADER_SEARCH_PATHS = "$(SRCROOT)/include";
+				MACOSX_DEPLOYMENT_TARGET = 12.0;
+				SDKROOT = macosx;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				GCC_OPTIMIZATION_LEVEL = 3;
+			};
+			name = Release;
+		};
+
+		623DB0746CCDE3C8D08E6D46 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				PRODUCT_NAME = GoAI;
+			};
+			name = Debug;
+		};
+
+		76964439EB5A7B437297E28C /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				PRODUCT_NAME = GoAI;
+			};
+			name = Release;
+		};
+
+		388C3A9A69A38482E13567F3 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				PRODUCT_NAME = GoAITests;
+			};
+			name = Debug;
+		};
+
+		8DAD133D1C0C75020AA7730E /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				PRODUCT_NAME = GoAITests;
+			};
+			name = Release;
+		};
+
+		7F77E90DDC6F1A25CBAEAF3D /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				PRODUCT_NAME = GoBoard;
+				OTHER_LDFLAGS = "-lncurses";
+			};
+			name = Debug;
+		};
+
+		F94CC04F82E448CE27A90E28 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				PRODUCT_NAME = GoBoard;
+				OTHER_LDFLAGS = "-lncurses";
+			};
+			name = Release;
+		};
+
+		AD8DC1A475C1871509FE9877 /* Build configuration list for PBXProject/NativeTarget */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				06125DCB1954C4F7EEE69894 /* Debug */,
+				AACF5BDB2BC481EB947517D5 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+
+		4CF5E796939A820186B4F90A /* Build configuration list for PBXProject/NativeTarget */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				623DB0746CCDE3C8D08E6D46 /* Debug */,
+				76964439EB5A7B437297E28C /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+
+		9F40E7B102D6A7205D76755B /* Build configuration list for PBXProject/NativeTarget */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				388C3A9A69A38482E13567F3 /* Debug */,
+				8DAD133D1C0C75020AA7730E /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+
+		3C289B27D612519AF6F00C90 /* Build configuration list for PBXProject/NativeTarget */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				7F77E90DDC6F1A25CBAEAF3D /* Debug */,
+				F94CC04F82E448CE27A90E28 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+
+		71A4EC12259AC8E4B5BAA9E6 /* GoAI */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 4CF5E796939A820186B4F90A;
+			buildPhases = (
+				C8EA5B3C23F0559FC4577DC3 /* Sources */,
+				718B35857FBE3E5A2CE373B9 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = GoAI;
+			productName = GoAI;
+			productReference = 14B9F2706679085CDDADB902 /* GoAI */;
+			productType = "com.apple.product-type.tool";
+		};
+
+		6A2BAA66870418A655103E2E /* GoAITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 9F40E7B102D6A7205D76755B;
+			buildPhases = (
+				52670A73A2ABD6CB424E3AC1 /* Sources */,
+				1721F7574E8321B99787A4A2 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = GoAITests;
+			productName = GoAITests;
+			productReference = 5F67AAE25BC4B94E88D9AFF8 /* GoAITests */;
+			productType = "com.apple.product-type.tool";
+		};
+
+		275FEC5EDDF64D892A26D319 /* GoBoard */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 3C289B27D612519AF6F00C90;
+			buildPhases = (
+				B37B72DDF29223E8EC8DE97A /* Sources */,
+				ED0D3560A361B353A4D42A3A /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = GoBoard;
+			productName = GoBoard;
+			productReference = 18FACBD34C024A4024BC7FE0 /* GoBoard */;
+			productType = "com.apple.product-type.tool";
+		};
+
+		46F86FAA6BBF9AC94A7E4595 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastUpgradeCheck = 1500;
+			};
+			buildConfigurationList = AD8DC1A475C1871509FE9877;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 518DA81DB9B99529C0C0AEBE;
+			productRefGroup = 547D009064F7C3F13BEF3460 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				71A4EC12259AC8E4B5BAA9E6 /* GoAI */,
+				6A2BAA66870418A655103E2E /* GoAITests */,
+				275FEC5EDDF64D892A26D319 /* GoBoard */,
+			);
+		};
+	};
+	rootObject = 46F86FAA6BBF9AC94A7E4595 /* Project object */;
+}

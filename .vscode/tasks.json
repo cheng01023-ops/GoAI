@@ -1,0 +1,47 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "构建 GoBoard（对弈程序）",
+      "type": "shell",
+      "command": "make",
+      "args": ["goboard"],
+      "group": { "kind": "build", "isDefault": true },
+      "problemMatcher": ["$gcc"],
+      "detail": "编译 build/GoBoard —— 本地人机对弈（ncurses）"
+    },
+    {
+      "label": "构建 GoAI（引擎/训练）",
+      "type": "shell",
+      "command": "make",
+      "args": ["all"],
+      "problemMatcher": ["$gcc"]
+    },
+    {
+      "label": "运行单元测试",
+      "type": "shell",
+      "command": "make",
+      "args": ["test"],
+      "problemMatcher": ["$gcc"]
+    },
+    {
+      "label": "训练一轮（本地）",
+      "type": "shell",
+      "command": "make",
+      "args": ["all"],
+      "problemMatcher": ["$gcc"]
+    },
+    {
+      "label": "开始持续训练",
+      "type": "shell",
+      "command": "./build/GoAI",
+      "args": ["train", "--size", "9", "--channels", "32", "--forever",
+               "--resume", "runs_live/latest.bin", "--games", "40", "--sims", "140",
+               "--steps", "250", "--lr", "0.01", "--threads", "8",
+               "--gate", "1", "--gategames", "20", "--eval-every", "3",
+               "--plot", "1", "--out", "runs_live"],
+      "isBackground": true,
+      "problemMatcher": []
+    }
+  ]
+}

@@ -1,0 +1,4 @@
+# GoAI GPU 训练器依赖
+# 5080 请装 CUDA 版（见 install_windows.bat），不要用这个文件的默认源
+torch>=2.4
+numpy>=1.24

@@ -1,0 +1,55 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "▶ 对弈：GoBoard（你 vs 本地 AI）",
+      "type": "lldb",
+      "request": "launch",
+      "program": "${workspaceFolder}/build/GoBoard",
+      "args": ["--weights", "auto", "--sims", "200"],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "preLaunchTask": "构建 GoBoard（对弈程序）"
+    },
+    {
+      "name": "对弈：19 路 + 200 次模拟",
+      "type": "lldb",
+      "request": "launch",
+      "program": "${workspaceFolder}/build/GoBoard",
+      "args": ["--size", "19", "--komi", "7.5", "--sims", "200", "--weights", "auto"],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "preLaunchTask": "构建 GoBoard（对弈程序）"
+    },
+    {
+      "name": "对弈：你执白（AI 先行）",
+      "type": "lldb",
+      "request": "launch",
+      "program": "${workspaceFolder}/build/GoBoard",
+      "args": ["--white", "--sims", "200", "--weights", "auto"],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "preLaunchTask": "构建 GoBoard（对弈程序）"
+    },
+    {
+      "name": "引擎：GTP 模式（接 Sabaki/GoGui）",
+      "type": "lldb",
+      "request": "launch",
+      "program": "${workspaceFolder}/build/GoAI",
+      "args": ["gtp", "--weights", "runs_v2/latest.bin", "--sims", "400"],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "preLaunchTask": "构建 GoAI（引擎/训练）"
+    },
+    {
+      "name": "自检：AI 自对弈（不用终端界面）",
+      "type": "lldb",
+      "request": "launch",
+      "program": "${workspaceFolder}/build/GoBoard",
+      "args": ["--selftest", "--sims", "60", "--weights", "auto"],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "preLaunchTask": "构建 GoBoard（对弈程序）"
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+GoAI training: 9x9 board, 32 channels, 140 sims, 40 games/iter, 14 iters, 8 threads
+  net params: 29210, replay buffer: 30000 positions
+iter  1/14  positions   4828  policy_loss 3.9714  value_loss 0.6100  vs-random  58.3%    54.8s
+iter  2/14  positions   4063  policy_loss 3.4764  value_loss 0.6388  vs-random  66.7%    48.8s
+iter  3/14  positions   4177  policy_loss 3.4168  value_loss 0.6436  vs-random  83.3%    45.4s
+iter  4/14  positions   4173  policy_loss 3.3833  value_loss 0.6611  vs-random  58.3%    48.7s
+iter  5/14  positions   3865  policy_loss 3.3742  value_loss 0.6576  vs-random 100.0%    45.1s
+iter  6/14  positions   4320  policy_loss 3.3581  value_loss 0.6720  vs-random  91.7%    47.8s
+iter  7/14  positions   4118  policy_loss 3.3538  value_loss 0.6479  vs-random  91.7%    46.4s
+iter  8/14  positions   5266  policy_loss 3.3121  value_loss 0.6800  vs-random  75.0%    57.7s
+iter  9/14  positions   4305  policy_loss 3.2667  value_loss 0.6720  vs-random  91.7%    52.1s
+iter 10/14  positions   4258  policy_loss 3.2757  value_loss 0.6674  vs-random  91.7%    48.4s
+iter 11/14  positions   3964  policy_loss 3.2686  value_loss 0.6999  vs-random  91.7%    44.6s
+iter 12/14  positions   4079  policy_loss 3.2646  value_loss 0.6946  vs-random  75.0%    45.9s
+iter 13/14  positions   3976  policy_loss 3.2552  value_loss 0.7076  vs-random  83.3%    45.0s
+iter 14/14  positions   4310  policy_loss 3.2400  value_loss 0.6891  vs-random  83.3%    50.1s
+final: trained vs initial random net  24 - 0 - 0 (100.0% wins)
+training finished in 715.0s; weights in runs_v2/, log in runs_v2/train_log.csv
