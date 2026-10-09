@@ -171,6 +171,7 @@ int main(int argc, char **argv) {
         train_config_default(&cfg, arg_int(argc, argv, "--size", 9));
         cfg.sims = arg_int(argc, argv, "--sims", cfg.sims);
         cfg.channels = arg_int(argc, argv, "--channels", cfg.channels);
+        cfg.blocks   = arg_int(argc, argv, "--blocks", cfg.blocks);
         return train_bench(&cfg);
     }
 
