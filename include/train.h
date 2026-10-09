@@ -46,6 +46,7 @@ typedef struct {
     int    anchor_every;      /* 每多少轮评估一次（0 = 关闭）          */
     int    anchor_games;      /* 每次评估多少局                        */
     /* ---- 退化保护：连续多次晋级赛表现差就回滚到 best.bin ---- */
+    int    reuse;             /* 1 = 自对弈时复用搜索树（默认开）      */
     int    rollback;          /* 1 = 打开回滚保护                      */
     int    rollback_patience; /* 连续几次差就回滚                      */
     int    save_sgf;         /* how many self-play games to store as SGF */

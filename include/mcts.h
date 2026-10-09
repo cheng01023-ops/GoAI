@@ -30,6 +30,8 @@ typedef struct {
     Node    *nodes;
     Edge    *edges;
     int      n_nodes, cap_nodes, n_edges, cap_edges;
+    int      root;            /* 当前根节点下标（树复用时不再固定为 0） */
+    int      pending_advance; /* >=0 表示下一步搜索先前进到这个着法的子树 */
     const Net *net;         /* NULL => random-rollout mode */
     NetCache cache;
     int      cache_ready;   /* cache is initialised for s->net */
@@ -67,6 +69,10 @@ int  search_run(Search *s, const Board *b0, int sims, float dirichlet_alpha, flo
    *is_terminal=1 时表示该局面已终局（此时 *terminal_value 给出从行棋方视角的价值） */
 /* 每手开始前重置搜索树（根节点对应当前局面） */
 void search_begin_move(Search *s);
+/* 树复用：把根前进到着法 move 的子节点（成功返回 1）。
+   走完一手后调用，下次搜索就能在已有子树上继续，
+   同样的模拟次数能搜得更深。 */
+int  search_advance_root(Search *s, int move);
 int  search_select_leaf(Search *s, Board *b, int *is_terminal);
 /* 用外部算好的 policy/value 展开叶子并回传 */
 void search_apply_leaf(Search *s, int leaf, const Board *b, const float *policy, float value);

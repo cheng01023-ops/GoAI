@@ -29,6 +29,7 @@ static void usage(void) {
         "               --anchor F.bin       fixed reference net for a low-noise progress curve\n"
         "               --anchor-every N     evaluate against it every N rounds (default 20)\n"
         "               --anchor-games N     games per anchor evaluation (default 20)\n"
+        "               --reuse 0/1          reuse the search tree between moves (default 1)\n"
         "               --rollback 0/1       fall back to best.bin when training degrades (default 1)\n"
         "               --rollback-patience N  consecutive bad gates before rollback (default 3)\n"
         "               --channels N conv channels (default 16 for 9x9)\n"
@@ -111,6 +112,7 @@ int main(int argc, char **argv) {
         cfg.anchor_path    = arg_str(argc, argv, "--anchor", cfg.anchor_path);
         cfg.anchor_every   = arg_int(argc, argv, "--anchor-every", cfg.anchor_every);
         cfg.anchor_games   = arg_int(argc, argv, "--anchor-games", cfg.anchor_games);
+        cfg.reuse          = arg_int(argc, argv, "--reuse", cfg.reuse);
         cfg.rollback       = arg_int(argc, argv, "--rollback", cfg.rollback);
         cfg.rollback_patience = arg_int(argc, argv, "--rollback-patience", cfg.rollback_patience);
         cfg.channels       = arg_int(argc, argv, "--channels", cfg.channels);

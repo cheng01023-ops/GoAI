@@ -104,6 +104,7 @@ void train_config_default(TrainConfig *cfg, int size) {
     cfg->anchor_path = NULL;
     cfg->anchor_every = 20;      /* 每 20 轮对固定基准评估一次 */
     cfg->anchor_games = 20;
+    cfg->reuse = 1;
     cfg->rollback = 1;
     cfg->rollback_patience = 3;
     cfg->lr_decay_every = 0;      /* 默认不衰减，用 --lr-decay-every 打开 */
@@ -264,6 +265,7 @@ int selfplay_game(const TrainConfig *cfg, Search *s, Rng *rng, Sgf *sgf, Example
         if (sgf) sgf_move(sgf, move, color);
         out->n++;
         if (!board_play(&b, move)) board_play(&b, M_PASS);
+        s->pending_advance = cfg->reuse ? move : -1;   /* 树复用开关 */
     }
     const int winner = board_winner(&b, cfg->komi);
     if (sgf) sgf_result(sgf, winner);

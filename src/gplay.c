@@ -157,6 +157,7 @@ static void *gplay_thread(void *arg) {
             }
             if (sgf && g == w->active[0]) gsgf_move(sgf, mv, w->boards[g].to_move);
             if (!board_play(&w->boards[g], mv)) board_play(&w->boards[g], M_PASS);   /* 兜底 */
+            w->searches[g].pending_advance = mv;   /* 树复用 */
             w->nmoves[g]++;
             w->positions++;
             if (w->boards[g].passes >= 2 || w->boards[g].nmoves >= w->max_moves) {

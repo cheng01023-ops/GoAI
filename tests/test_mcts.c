@@ -140,5 +140,39 @@ int test_mcts_run(void) {
         CHECK(s.n_nodes > 1, "tree actually grew (%d nodes)", s.n_nodes);
         search_free(&s); net_free(&net);
     }
+    /* 7) 树复用：走完一手后根前进到子树，下次搜索应继承之前的访问 */
+    {
+        Net net;
+        net_init(&net, 9, 4, 16, 32, 12345);
+        NetCache cache;
+        net_cache_init(&net, &cache);
+        Search s;
+        search_init(&s, 9, &net, 999, 7.0);
+        Board b;
+        board_init(&b, 9);
+        float pol[82], val = 0;
+        const int mv = search_run(&s, &b, 120, 0.0f, 0.0f, 0.0f, pol, &val);
+        CHECK(s.root == 0, "首次搜索根节点应为 0");
+        const int visits_before = s.nodes[0].visits;
+        CHECK(s.nodes[0].expanded, "根节点应已展开");
+        CHECK(mv >= 0 && mv < 81, "应返回合法着法（%d）", mv);
+        /* 走这一手，标记复用 */
+        CHECK(board_is_legal_move(&b, mv), "着法合法");
+        board_play(&b, mv);
+        s.pending_advance = mv;
+        float pol2[82];
+        const int mv2 = search_run(&s, &b, 60, 0.0f, 0.0f, 0.0f, pol2, &val);
+        CHECK(s.root != 0, "复用后根节点下标应不再是 0（实际 %d）", s.root);
+        CHECK(s.nodes[s.root].visits >= 60, "复用后根节点访问数应至少包含本轮 60 次（%d）", s.nodes[s.root].visits);
+        CHECK(mv2 >= 0 && mv2 < 82, "复用后仍返回合法着法（%d）", mv2);
+        /* 不复用时应该重建 */
+        s.pending_advance = -1;
+        search_run(&s, &b, 30, 0.0f, 0.0f, 0.0f, pol2, &val);
+        CHECK(s.root == 0, "未标记复用时根节点应重置为 0");
+        (void)visits_before;
+        search_free(&s);
+        net_cache_free(&cache);
+        net_free(&net);
+    }
     return 0;
 }
