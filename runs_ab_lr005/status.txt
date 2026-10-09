@@ -1,0 +1,12 @@
+state=finished
+iteration=13
+game=0
+games_this_iter=40
+total_games=480
+elapsed_iter=0.0
+elapsed_total=761.4
+threads=10
+sims=140
+channels=32
+pid=27870
+updated=2026-10-09 17:29:11
