@@ -37,6 +37,9 @@ static void layout(Net *net) {
     } while (0)
     LAY(c1w, C * P * 9);   LAY(c1b, C);
     LAY(c2w, C * C * 9);   LAY(c2b, C);
+    /* 每个残差块：convA(w,b) + convB(w,b) */
+    net->blk_stride = 2 * C * C * 9 + 2 * C;
+    LAY(bw, net->blocks * net->blk_stride);
     LAY(pw, 2 * C);        LAY(pb, 2);
     LAY(pfcw, (nn + 1) * 2 * nn); LAY(pfcb, nn + 1);
     LAY(vw, C);            LAY(vb, 1);
@@ -47,7 +50,13 @@ static void layout(Net *net) {
 }
 
 void net_init(Net *net, int size, int planes, int channels, int vhidden, uint64_t seed) {
+    net_init_ex(net, size, planes, channels, vhidden, 0, seed);
+}
+
+void net_init_ex(Net *net, int size, int planes, int channels, int vhidden,
+                 int blocks, uint64_t seed) {
     memset(net, 0, sizeof(*net));
+    net->blocks = blocks < 0 ? 0 : blocks;
     net->size = size;
     net->nn = size * size;
     net->planes = planes;
@@ -67,6 +76,7 @@ void net_init(Net *net, int size, int planes, int channels, int vhidden, uint64_
     const double so = 1.0 / sqrt((double)vhidden);
     for (int i = 0; i < net->len_c1w; i++)    p[net->off_c1w + i]    = (float)(rng_normal(&rng) * s1);
     for (int i = 0; i < net->len_c2w; i++)    p[net->off_c2w + i]    = (float)(rng_normal(&rng) * s2);
+    for (int i = 0; i < net->len_bw; i++)     p[net->off_bw + i]     = (float)(rng_normal(&rng) * s2);
     for (int i = 0; i < net->len_pw; i++)     p[net->off_pw + i]     = (float)(rng_normal(&rng) * 0.1);
     for (int i = 0; i < net->len_pfcw; i++)   p[net->off_pfcw + i]   = (float)(rng_normal(&rng) * sp * 0.3);
     for (int i = 0; i < net->len_vw; i++)     p[net->off_vw + i]     = (float)(rng_normal(&rng) * 0.1);
@@ -117,13 +127,26 @@ void net_cache_init(const Net *net, NetCache *c) {
     c->d_zv   = alloc_floats(nn);
     c->d_ha   = alloc_floats(H);
     c->g_scratch = alloc_floats((size_t)net->n_params);
+    /* 残差块的前向/反向缓存 */
+    if (net->blocks > 0) {
+        const size_t nb = (size_t)net->blocks * 4 * net->channels * net->nn;
+        c->blk = (float *)calloc(nb, sizeof(float));
+        c->dblk = (float *)calloc((size_t)3 * net->channels * net->nn, sizeof(float));
+        if (!c->blk || !c->dblk) {
+            fprintf(stderr, "net_cache_init: out of memory\n");
+            exit(1);
+        }
+    }
 }
+
 
 void net_cache_free(NetCache *c) {
     free(c->x); free(c->z1); free(c->h1); free(c->z2); free(c->h2); free(c->zp);
     free(c->logits); free(c->probs); free(c->zv); free(c->za); free(c->ha); free(c->dx);
     free(c->d_h2); free(c->d_pre2); free(c->d_h1); free(c->d_pre1);
     free(c->d_zp); free(c->d_zv); free(c->d_ha); free(c->g_scratch);
+    free(c->blk); c->blk = NULL;
+    free(c->dblk); c->dblk = NULL;
     memset(c, 0, sizeof(*c));
 }
 
@@ -213,8 +236,25 @@ void net_forward(const Net *net, NetCache *c, const float *x, float *policy, flo
     memcpy(c->x, x, (size_t)P * nn * sizeof(float));
     conv3x3_fwd(w + net->off_c1w, w + net->off_c1b, x, P, C, n, c->z1, c->h1);
     conv3x3_fwd(w + net->off_c2w, w + net->off_c2b, c->h1, C, C, n, c->z2, c->h2);
-    conv1x1_fwd(w + net->off_pw, w + net->off_pb, c->h2, C, 2, n, c->zp);
-    conv1x1_fwd(w + net->off_vw, w + net->off_vb, c->h2, C, 1, n, c->zv);
+
+    /* ---- 残差块：h <- relu(convB(relu(convA(h))) + h) ---- */
+    const float *h = c->h2;
+    for (int b = 0; b < net->blocks; b++) {
+        const float *base = w + net->off_bw + (size_t)b * net->blk_stride;
+        float *zA = c->blk + (size_t)b * 4 * C * nn;
+        float *hA = zA + C * nn, *zB = hA + C * nn, *hB = zB + C * nn;
+        conv3x3_fwd(base, base + C * C * 9, h, C, C, n, zA, hA);
+        conv3x3_fwd(base + C * C * 9 + C, base + C * C * 9 + C + C * C * 9,
+                    hA, C, C, n, zB, hB);
+        for (int i = 0; i < C * nn; i++) {
+            const float v = zB[i] + h[i];
+            hB[i] = v > 0.0f ? v : 0.0f;
+        }
+        h = hB;
+    }
+
+    conv1x1_fwd(w + net->off_pw, w + net->off_pb, h, C, 2, n, c->zp);
+    conv1x1_fwd(w + net->off_vw, w + net->off_vb, h, C, 1, n, c->zv);
 
     const float *pfcw = w + net->off_pfcw;
     const float *pfcb = w + net->off_pfcb;
@@ -361,9 +401,32 @@ float net_backward(const Net *net, NetCache *c, const float *pi, float z, float 
                     g + net->off_pw, g + net->off_pb, c->d_h2);
     }
 
+    /* ---- 残差块反传（从最后一塊往前）---- */
+    const float *dcur = c->d_h2;      /* 头部累积的梯度（对最终激活） */
+    for (int b = net->blocks - 1; b >= 0; b--) {
+        float *zA = c->blk + (size_t)b * 4 * C * nn;
+        float *hA = zA + C * nn, *zB = hA + C * nn, *hB = zB + C * nn;
+        const float *hin = (b == 0) ? c->h2 : (c->blk + (size_t)(b - 1) * 4 * C * nn + 3 * C * nn);
+        float *dhA = c->dblk + (size_t)(b % 3) * C * nn;
+        float *din = c->dblk + (size_t)((b + 1) % 3) * C * nn;
+        const float *base = net->params + net->off_bw + (size_t)b * net->blk_stride;
+        float *gw = g + net->off_bw + (size_t)b * net->blk_stride;
+        memset(dhA, 0, (size_t)C * nn * sizeof(float));
+        memset(din, 0, (size_t)C * nn * sizeof(float));
+        /* convB 的反向：hB 提供 ReLU 掩码（hB>0 <=> 预激活>0）*/
+        conv3x3_bwd(base + C * C * 9 + C, hB, dcur, hA, C, C, net->size,
+                    gw + C * C * 9 + C, gw + C * C * 9 + C + C * C * 9, dhA);
+        /* convA 的反向 */
+        conv3x3_bwd(base, zA, dhA, hin, C, C, net->size, gw, gw + C * C * 9, din);
+        /* 跳连：h_out = relu(zB + hin) => d(hin) += dcur * (hB>0) */
+        for (int i = 0; i < C * nn; i++)
+            if (hB[i] > 0.0f) din[i] += dcur[i];
+        dcur = din;
+    }
+
     /* ---- conv2 ---- */
     memset(c->d_h1, 0, (size_t)C * nn * sizeof(float));
-    conv3x3_bwd(net->params + net->off_c2w, c->z2, c->d_h2, c->h1, C, C, net->size,
+    conv3x3_bwd(net->params + net->off_c2w, c->z2, dcur, c->h1, C, C, net->size,
                 g + net->off_c2w, g + net->off_c2b, c->d_h1);
 
     /* ---- conv1 ---- */
