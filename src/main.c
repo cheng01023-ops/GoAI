@@ -114,6 +114,8 @@ int main(int argc, char **argv) {
         cfg.anchor_every   = arg_int(argc, argv, "--anchor-every", cfg.anchor_every);
         cfg.anchor_games   = arg_int(argc, argv, "--anchor-games", cfg.anchor_games);
         cfg.open_plies     = arg_int(argc, argv, "--open-plies", cfg.open_plies);
+        { const char *os = arg_str(argc, argv, "--open-seed", NULL);
+          if (os) cfg.open_seed = strtoull(os, NULL, 10); }
         cfg.reuse          = arg_int(argc, argv, "--reuse", cfg.reuse);
         cfg.rollback       = arg_int(argc, argv, "--rollback", cfg.rollback);
         cfg.rollback_patience = arg_int(argc, argv, "--rollback-patience", cfg.rollback_patience);
@@ -209,6 +211,8 @@ int main(int argc, char **argv) {
         const double komi = arg_dbl(argc, argv, "--komi", 7.0);
         const char *sd = arg_str(argc, argv, "--seed", NULL);
         const int open_plies = arg_int(argc, argv, "--open-plies", 4);
+        { const char *os = arg_str(argc, argv, "--open-seed", NULL);
+          if (os) eval_set_open_seed(strtoull(os, NULL, 10)); }
         return eval_main(a, b, games, sims, size, open_plies, komi, sd ? strtoull(sd, NULL, 10) : 4242);
     }
 

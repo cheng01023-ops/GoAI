@@ -283,6 +283,9 @@ static Net *load_net_or_null(const char *spec, int size, NetHandle *h, int *is_r
     return &h->net;
 }
 
+static uint64_t g_eval_open_seed = 0;
+void eval_set_open_seed(uint64_t s) { g_eval_open_seed = s; }
+
 int eval_main(const char *a_spec, const char *b_spec, int games, int sims, int size,
               int open_plies, double komi, uint64_t seed) {
     NetHandle ha, hb;
@@ -297,6 +300,7 @@ int eval_main(const char *a_spec, const char *b_spec, int games, int sims, int s
     cfg.komi = komi;
     cfg.eval_sims = sims;
     cfg.open_plies = open_plies;
+    if (g_eval_open_seed) cfg.open_seed = g_eval_open_seed;
 
     Search s;
     search_init(&s, size, na ? na : nb, seed, komi);
