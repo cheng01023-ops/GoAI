@@ -1,12 +1,12 @@
 state=running
 iteration=125
-game=10
+game=72
 games_this_iter=200
-total_games=24810
-elapsed_iter=16.1
-elapsed_total=29795.1
+total_games=24872
+elapsed_iter=78.3
+elapsed_total=29857.3
 threads=10
 sims=800
 channels=32
 pid=77400
-updated=2026-10-10 07:47:06
+updated=2026-10-10 07:48:09
