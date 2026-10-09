@@ -156,7 +156,9 @@ python gpu/server.py --size 19 --channels 256 --device cuda --amp bf16 --max-bat
       --threads 10 --gate 1 --gategames 40 --eval-every 5 \
       --anchor warm13.bin --anchor-every 10 --anchor-games 20 --out runs13
 
-> 注意：13 路每局手数约为 9 路的 1.5 倍、局面数 2.1 倍，整体慢 2.5~3 倍。
+> **实测开销（M5，10 线程）**：13 路每局约 180 手（9 路约 110 手），局面数 2.1 倍，
+> 搜索树也更大 —— 每轮 40 局约 4.4 分钟，是 9 路（36 秒）的 **约 8 倍**。
+> 也就是说 13 路一夜大约能跑 130 轮 / 5,000 局。用 --sims 控制强度，13 路建议 160~300。
 > 用 `--sims` 控制强度：13 路建议 200~400。
 
 ## 项目结构
