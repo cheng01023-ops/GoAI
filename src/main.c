@@ -29,6 +29,7 @@ static void usage(void) {
         "               --anchor F.bin       fixed reference net for a low-noise progress curve\n"
         "               --anchor-every N     evaluate against it every N rounds (default 20)\n"
         "               --anchor-games N     games per anchor evaluation (default 20)\n"
+        "               --open-plies N       paired openings for matchplay (0=off, default 4)\n"
         "               --reuse 0/1          reuse search tree between moves (default 0)\n"
         "               --rollback 0/1       fall back to best.bin when training degrades (default 1)\n"
         "               --rollback-patience N  consecutive bad gates before rollback (default 3)\n"
@@ -112,6 +113,7 @@ int main(int argc, char **argv) {
         cfg.anchor_path    = arg_str(argc, argv, "--anchor", cfg.anchor_path);
         cfg.anchor_every   = arg_int(argc, argv, "--anchor-every", cfg.anchor_every);
         cfg.anchor_games   = arg_int(argc, argv, "--anchor-games", cfg.anchor_games);
+        cfg.open_plies     = arg_int(argc, argv, "--open-plies", cfg.open_plies);
         cfg.reuse          = arg_int(argc, argv, "--reuse", cfg.reuse);
         cfg.rollback       = arg_int(argc, argv, "--rollback", cfg.rollback);
         cfg.rollback_patience = arg_int(argc, argv, "--rollback-patience", cfg.rollback_patience);
@@ -206,7 +208,8 @@ int main(int argc, char **argv) {
         const int size = arg_int(argc, argv, "--size", 9);
         const double komi = arg_dbl(argc, argv, "--komi", 7.0);
         const char *sd = arg_str(argc, argv, "--seed", NULL);
-        return eval_main(a, b, games, sims, size, komi, sd ? strtoull(sd, NULL, 10) : 4242);
+        const int open_plies = arg_int(argc, argv, "--open-plies", 4);
+        return eval_main(a, b, games, sims, size, open_plies, komi, sd ? strtoull(sd, NULL, 10) : 4242);
     }
 
     usage();

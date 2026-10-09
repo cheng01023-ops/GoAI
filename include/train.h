@@ -46,6 +46,8 @@ typedef struct {
     int    anchor_every;      /* 每多少轮评估一次（0 = 关闭）          */
     int    anchor_games;      /* 每次评估多少局                        */
     /* ---- 退化保护：连续多次晋级赛表现差就回滚到 best.bin ---- */
+    int    open_plies;        /* 成对开局：每对先随机下这么多手（0=关闭）*/
+    uint64_t open_seed;       /* 开局生成的种子（固定值 => 各实验可比）   */
     int    reuse;             /* 1 = 自对弈复用搜索树（默认关，见 README）*/
     int    rollback;          /* 1 = 打开回滚保护                      */
     int    rollback_patience; /* 连续几次差就回滚                      */

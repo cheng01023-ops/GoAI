@@ -9,7 +9,7 @@ int human_play_main(const char *weights, int sims, int size, double komi, int hu
 int selfplay_main(const char *weights, int games, int sims, int size, double komi,
                   const char *out_dir, uint64_t seed);
 int diag_main(const char *weights, int size);
-int eval_main(const char *a_spec, const char *b_spec, int games, int sims, int size,
+int eval_main(const char *a_spec, const char *b_spec, int games, int sims, int size, int open_plies,
               double komi, uint64_t seed);
 
 #endif /* GOAI_APPS_H */

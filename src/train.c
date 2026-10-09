@@ -104,6 +104,8 @@ void train_config_default(TrainConfig *cfg, int size) {
     cfg->anchor_path = NULL;
     cfg->anchor_every = 20;      /* 每 20 轮对固定基准评估一次 */
     cfg->anchor_games = 20;
+    cfg->open_plies = 4;         /* 成对开局：4 手（大幅降低评估方差） */
+    cfg->open_seed = 0xA11CE5EEDULL;
     cfg->reuse = 0;   /* 实测：默认关闭（见 README 的 A/B 结论） */
     cfg->rollback = 1;
     cfg->rollback_patience = 3;
@@ -408,19 +410,59 @@ static int eval_move(Search *s, const TrainConfig *cfg, EngineSpec e, const Boar
     return search_run(s, b, e.sims, 0.0f, 0.0f, temp, pol, NULL);
 }
 
+/* 生成一个随机开局：从空盘随机下 plies 手合法着法（不停着）。
+   用固定种子，所以不同实验（A/B 两臂、不同时间）拿到的是同一批开局，
+   这样比较才有意义。 */
+static void make_opening(const TrainConfig *cfg, Board *bd, int pair_index) {
+    board_init(bd, cfg->size);
+    if (cfg->open_plies <= 0) return;
+    Rng rng;
+    rng_seed(&rng, cfg->open_seed + 0x9E3779B97F4A7C15ULL * (uint64_t)(pair_index + 1));
+    int moves[BOARD_MAX_POINTS + 1];
+    for (int i = 0; i < cfg->open_plies; i++) {
+        const int nm = board_legal_moves(bd, moves, false);
+        if (nm <= 0) break;
+        if (!board_play(bd, moves[rng_below(&rng, (uint32_t)nm)])) break;
+    }
+}
+
+/* 一盘对局：从 start 局面开始，a_is_black 决定谁执黑。 */
+static int play_one(Search *s, const TrainConfig *cfg, EngineSpec a, EngineSpec b,
+                    const Board *start, int a_is_black) {
+    Board bd = *start;
+    while (bd.passes < 2 && bd.nmoves < cfg->max_moves) {
+        const EngineSpec e = (bd.to_move == 1) ? (a_is_black ? a : b) : (a_is_black ? b : a);
+        const int mv = eval_move(s, cfg, e, &bd, &s->rng);
+        if (!board_play(&bd, mv)) board_play(&bd, M_PASS);
+    }
+    return board_winner(&bd, cfg->komi);
+}
+
 int eval_match(Search *s, const TrainConfig *cfg, EngineSpec a, EngineSpec b,
                int games, int *wins_a, int *wins_b, int *draws) {
     int wa = 0, wb = 0, dr = 0;
-    for (int g = 0; g < games; g++) {
+    int g = 0;
+    /* 成对开局：同一开局下 A 执黑一次、执白一次，抵消开局运气 */
+    if (cfg->open_plies > 0) {
+        const int pairs = games / 2;
+        for (int p = 0; p < pairs; p++) {
+            Board open_bd;
+            make_opening(cfg, &open_bd, p);
+            for (int side = 0; side < 2; side++) {
+                const int a_is_black = (side == 0);
+                const int w = play_one(s, cfg, a, b, &open_bd, a_is_black);
+                if (w == 0) dr++;
+                else if ((w == 1) == a_is_black) wa++;
+                else wb++;
+            }
+            g += 2;
+        }
+    }
+    for (; g < games; g++) {   /* 剩余的（或者关闭成对开局时）走原来的逻辑 */
         Board bd;
         board_init(&bd, cfg->size);
         const int a_is_black = (g % 2 == 0);
-        while (bd.passes < 2 && bd.nmoves < cfg->max_moves) {
-            const EngineSpec e = (bd.to_move == 1) ? (a_is_black ? a : b) : (a_is_black ? b : a);
-            int mv = eval_move(s, cfg, e, &bd, &s->rng);
-            if (!board_play(&bd, mv)) board_play(&bd, M_PASS);
-        }
-        const int w = board_winner(&bd, cfg->komi);
+        const int w = play_one(s, cfg, a, b, &bd, a_is_black);
         if (w == 0) dr++;
         else if ((w == 1) == a_is_black) wa++;
         else wb++;

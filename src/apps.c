@@ -284,7 +284,7 @@ static Net *load_net_or_null(const char *spec, int size, NetHandle *h, int *is_r
 }
 
 int eval_main(const char *a_spec, const char *b_spec, int games, int sims, int size,
-              double komi, uint64_t seed) {
+              int open_plies, double komi, uint64_t seed) {
     NetHandle ha, hb;
     memset(&ha, 0, sizeof(ha));
     memset(&hb, 0, sizeof(hb));
@@ -296,6 +296,7 @@ int eval_main(const char *a_spec, const char *b_spec, int games, int sims, int s
     train_config_default(&cfg, size);
     cfg.komi = komi;
     cfg.eval_sims = sims;
+    cfg.open_plies = open_plies;
 
     Search s;
     search_init(&s, size, na ? na : nb, seed, komi);
@@ -311,8 +312,9 @@ int eval_main(const char *a_spec, const char *b_spec, int games, int sims, int s
     const double el = goai_now() - t0;
     printf("A = %s%s\nB = %s%s\n", a_spec ? a_spec : "random", a_random ? " (random mover)" : "",
            b_spec ? b_spec : "random", b_random ? " (random mover)" : "");
-    printf("%d games at %d simulations: A wins %d, B wins %d, draws %d  => A win rate %.1f%%\n",
-           games, sims, wa, wb, dr, 100.0 * (wa + 0.5 * dr) / (double)games);
+    printf("%d games at %d simulations%s: A wins %d, B wins %d, draws %d  => A win rate %.1f%%\n",
+           games, sims, open_plies > 0 ? " (paired openings)" : "", wa, wb, dr,
+           100.0 * (wa + 0.5 * dr) / (double)games);
     printf("(%.1fs, %.2fs per game)\n", el, el / games);
 
     search_free(&s);
