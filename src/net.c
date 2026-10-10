@@ -26,9 +26,29 @@ void net_config_default(int size, int *planes, int *channels, int *vhidden) {
     if (channels) *channels = (size >= 13) ? 32 : 16;
 }
 
+/* 参数总量：与 layout() 必须严格一致（加载旧文件时用它交叉核对 flags 解释） */
+static int params_for(int nn, int planes, int channels, int vhidden, int blocks,
+                      int own_head, int vdist) {
+    const int K = vdist ? NET_VALUE_BUCKETS : 1;
+    int o = 0;
+    o += channels * planes * 9 + channels;                        /* conv1 */
+    o += channels * channels * 9 + channels;                      /* conv2 */
+    o += blocks * (2 * channels * channels * 9 + 2 * channels);   /* 残差块 */
+    o += 2 * channels + 2;                                        /* 策略头 1x1 */
+    o += (nn + 1) * 2 * nn + (nn + 1);                            /* 策略全连接 */
+    o += channels + 1;                                            /* 价值头 1x1 */
+    o += vhidden * nn + vhidden;                                  /* 价值全连接 1 */
+    o += vhidden * K + K;                                         /* 价值全连接 2（K 桶） */
+    if (own_head) o += channels + 1;                              /* 领地头 1x1 */
+    return o;
+}
+
 static void layout(Net *net) {
     int o = 0;
     const int nn = net->nn, P = net->planes, C = net->channels, H = net->vhidden;
+    net->flags = NET_FLAG_BLOCKS | (net->own_head ? NET_FLAG_OWN : 0) |
+                 (net->vdist ? NET_FLAG_VDIST : 0) | ((uint32_t)net->blocks << 8);
+    net->nbuckets = net->vdist ? NET_VALUE_BUCKETS : 1;
 #define LAY(field, len)                                                          \
     do {                                                                         \
         net->off_##field = o;                                                    \
@@ -44,9 +64,40 @@ static void layout(Net *net) {
     LAY(pfcw, (nn + 1) * 2 * nn); LAY(pfcb, nn + 1);
     LAY(vw, C);            LAY(vb, 1);
     LAY(vfc1w, H * nn);    LAY(vfc1b, H);
-    LAY(vfc2w, H);         LAY(vfc2b, 1);
+    LAY(vfc2w, H * net->nbuckets); LAY(vfc2b, net->nbuckets);
+    /* 领地头放最后：这样老文件的参数前缀能原样搬进新网络（net_copy_shared） */
+    if (net->own_head) { LAY(ow, C); LAY(ob, 1); }
+    else { net->off_ow = o; net->off_ob = o; net->len_ow = 0; net->len_ob = 0; }
 #undef LAY
     net->n_params = o;
+}
+
+/* 值分布的桶心：33 个桶均匀覆盖 [-1, +1] */
+float net_value_bucket_center(int k) {
+    if (k < 0) k = 0;
+    if (k > NET_VALUE_BUCKETS - 1) k = NET_VALUE_BUCKETS - 1;
+    return -1.0f + 2.0f * (float)k / (float)(NET_VALUE_BUCKETS - 1);
+}
+
+int net_value_bucket_index(float z) {
+    if (z < -1.0f) z = -1.0f;
+    if (z > 1.0f) z = 1.0f;
+    const float t = (z + 1.0f) * 0.5f * (float)(NET_VALUE_BUCKETS - 1);
+    int k = (int)(t + 0.5f);
+    if (k < 0) k = 0;
+    if (k > NET_VALUE_BUCKETS - 1) k = NET_VALUE_BUCKETS - 1;
+    return k;
+}
+
+void net_arch_str(const Net *net, char *buf, size_t n) {
+    char tails[64];
+    tails[0] = 0;
+    if (net->blocks > 0) snprintf(tails + strlen(tails), sizeof(tails) - strlen(tails),
+                                  " %dblk", net->blocks);
+    if (net->own_head)   snprintf(tails + strlen(tails), sizeof(tails) - strlen(tails), " own");
+    if (net->vdist)      snprintf(tails + strlen(tails), sizeof(tails) - strlen(tails),
+                                  " vdist%d", NET_VALUE_BUCKETS);
+    snprintf(buf, n, "%dch%s", net->channels, tails);
 }
 
 void net_init(Net *net, int size, int planes, int channels, int vhidden, uint64_t seed) {
