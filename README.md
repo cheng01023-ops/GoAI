@@ -38,7 +38,7 @@
 **macOS / Linux**
 
 ```bash
-make -s all && make -s test          # 编译 + 自检（224 项测试）
+make -s all && make -s test          # 编译 + 自检（226 项测试）
 ./build/GoAI train --size 9 --channels 32 --forever \
   --games 40 --sims 140 --steps 250 --threads 8 \
   --gate 1 --gategames 20 --eval-every 3 --out runs_live
@@ -345,6 +345,8 @@ Makefile 仍保留 `NATIVE=1` 开关，但默认关闭以保证二进制可跨�
 | 15 | 学习率扫描 | 排除（与 LR 无关） | 0.001→40%, 0.0003→20%, 0.0001→38% |
 | 16 | 每轮对局数 200 | 采用 | 同数据量下比 40 局/轮好 10 个百分点 |
 | 17 | 残差块 --blocks | 进行中 | 梯度校验 0 偏差；2 块 = 6.4 倍前向开销 |
+| 18 | 第 ⑤ 步：领地头 + 值分布 | 进行中（见「第 ⑤ 步」一节） | 梯度校验 2e-05；**顺带修掉残差块下头部 1x1 梯度错误**（偏差 0.15 → 1.8e-04）|
+| 19 | 值头热启动标定（标量→分布） | ✅ 采用 | 未标定锚点 2.5%，标定后起点 45%（60 局成对开局）|
 
 ### 第 12 项实验细节：搜索深度（模拟次数）
 
@@ -618,7 +620,7 @@ CSV 多了一列 `own_loss`（平均 BCE），曲线图会自动多画一格。
 
 ### 测试与校验
 
-测试从 **106 项增加到 224 项**，新增的关键校验：
+测试从 **106 项增加到 226 项**，新增的关键校验：
 
 - 领地头有限差分：全部 `C+1` 个参数，最大偏差 **2.3e-05**（0 超差）
 - 值分布头有限差分：最大偏差 **2.5e-05**（0 超差）
@@ -633,6 +635,40 @@ CSV 多了一列 `own_loss`（平均 BCE），曲线图会自动多画一格。
 > （conv2 的输出），而前向用的是最后一块的输出 `hB` —— 有残差块时这些权重
 > （`pw`/`vw`/新的 `ow`）的梯度全是错的，有限差分显示价值头 1x1 偏差达 0.15。
 > 现在反向和前向用同一个缓存 `h_head`，偏差降到 1.8e-04（已有 blocks=2 的回归测试）。
+
+### 实测一：冒烟训练（2 轮，热启动 runs9_s800/best.bin，**未标定**）
+
+| 轮 | 策略损失 | 价值损失(CE) | 领地 BCE | 对随机 | 每局手数 | 锚点(成对开局 40 局) |
+|---|---|---|---|---|---|---|
+| 1 | 2.91 | 2.79 | 0.6675 | 100% | 96.9 | **2.5%** |
+| 2 | 3.04 | 1.05 | 0.6571 | 100% | 101.4 | **5.0%** |
+
+结论：**损失全部有限、对随机胜率不掉、每局手数正常（~100 手）** ✓，
+但**锚点胜率从 67.5% 崩到 2.5%** ✗ —— 原因是热启动时分布头的 K 个 logits 随机初始化
+≈ 均匀分布，搜索值恒为 0，等于把价值头摘掉了（价值 CE 从 `log 33 = 3.50` 开始、
+两轮降到 1.05，说明头在学，但搜索已经变瞎）。
+
+### 实测二：标量值头 → 分布值头 的**标定热启动**
+
+把老头的标量读出翻译成一个分布，而不是丢掉重学：
+
+    logit_k = A * center_k * vo_old - GAMMA * center_k^2      (A = 3.0, GAMMA = 0.02)
+
+它仍然是 `ha` 的线性函数，所以可以直接写进新头：
+`W2[j][k] = A*center_k*W[j]`、`b2[k] = A*center_k*b - GAMMA*center_k^2`。
+数值标定后 `期望值 ≈ tanh(vo_old)`（单测里随机网络最大偏差 0.0072）。
+
+从同一基线（`versions/goai9x9_v5_800sims.bin`，即 step ④ 的 s800 权重）
+迁移出来、**不做任何训练**，用成对开局对基线评估（200 模拟）：
+
+| 迁移方式 | 对基线胜率 | 局数 |
+|---|---|---|
+| 纯拷贝（不加新头，等价于基线自己） | 50.0%（10-10） | 20 |
+| 分布头随机初始化（未标定） | 2.5% ~ 5.0% | 40 |
+| 分布头标定迁移（`versions/step5_hotstart_9x9.bin`） | 42.5%（20 局）/ **45.0%**（24-30-6，60 局） | 20+60 |
+
+热启动后的价值读出：同一局面老网络 +0.789、迁移后 +0.720（策略完全不变）✓
+**标定把"热启动即崩"变成"起点略低于基线（45%）"，实验才有意义** ✓
 
 ## 项目结构
 
@@ -650,7 +686,7 @@ gpu/train.py       纯 Python/PyTorch 训练器（另一条路，适合快速试
 gpu/goai_gpu/      规则镜像、模型定义、权重导入导出（与 C 端 .bin 格式互通）
 standalone/        可直接发给别人玩的独立包（含预编译 Windows exe）
 versions/          冻结的历史权重
-tests/             224 项单元测试（make test）
+tests/             226 项单元测试（make test）
 tools/             打包、画图、Xcode 工程生成等脚本
 ```
 
@@ -734,6 +770,6 @@ policy/value network with hand-written forward/backward passes — no ML framewo
 - **Train yourself**: `./build/GoAI train --size 9 --channels 32 --forever --threads 8 --out runs_live`
 - **With an NVIDIA GPU**: `python gpu/server.py --device cuda` + `./build/GoAI gtrain --remote 127.0.0.1:8899`
 - **Measured**: 35,320 self-play games in 8.6 h on an 8-core laptop → 100% vs random, 98.8% vs the previous generation
-- **Tests**: `make test` (224 checks). License: MIT.
+- **Tests**: `make test` (226 checks). License: MIT.
 
 Weights use a simple little-endian float32 `.bin` format shared between the C and Python sides.

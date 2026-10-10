@@ -1,0 +1,8 @@
+继续训练：已载入 versions/step5_hotstart_9x9.bin
+=== GoAI 持续自我迭代训练 ===
+  棋盘 9x9 · 32ch own vdist33 · 每步 800 次模拟 · 每轮 200 局 · 10 线程
+  辅助头：领地 BCE 权重 0.150（数据增强会同步变换归属图）
+  值头：33 桶分布（交叉熵；这个数字与以前的 MSE 不可比）
+  输出目录 runs_step5/  （latest.bin / best.bin / train_log.csv / status.txt）
+  学习率计划：0.00020 起，每 30 轮 ×0.90，下限 0.00002
+  模式：持续训练（随时可停止，停止时会保存权重）
