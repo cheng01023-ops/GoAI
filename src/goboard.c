@@ -88,9 +88,12 @@ typedef struct {
 
 static const char *pick_file(App *a, char *buf, size_t n) {
     (void)a;
-    const char *cands[] = { "runs_live/best.bin", "runs_live/latest.bin",
+    const char *cands[] = { "runs9_s800/best.bin", "runs9_s800/latest.bin",
+                            "runs_step5/latest.bin", "runs_v4/latest.bin",
+                            "runs_live/best.bin", "runs_live/latest.bin",
                             "runs_gpu/best.bin", "runs_gpu/latest.bin",
-                            "runs_v2/latest.bin", "runs/latest.bin", "weights.bin", NULL };
+                            "runs_v2/latest.bin", "runs/latest.bin",
+                            "versions/goai9x9_v5_800sims.bin", "weights.bin", NULL };
     const char *best = NULL;
     time_t best_t = 0;
     for (int i = 0; cands[i]; i++) {
@@ -111,7 +114,9 @@ static int load_builtin(App *a) {
     a->search.komi = a->opt.komi;
     a->have_net = 1;
     a->loaded_mtime = 0;
-    snprintf(a->loaded_path, sizeof(a->loaded_path), "内置权重(%d通道)", a->net.channels);
+    char arch[64];
+    net_arch_str(&a->net, arch, sizeof(arch));
+    snprintf(a->loaded_path, sizeof(a->loaded_path), "内置权重(%s)", arch);
     return 1;
 }
 

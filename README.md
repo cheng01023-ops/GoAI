@@ -29,9 +29,34 @@
 ### ① 只想下棋（最省事）
 
 - **Windows**：解压 `standalone/`，双击 `PLAY_NOW.bat` —— 不用装编译器、不用装 Python
-- **macOS / Linux**：`cd standalone && make goboard && ./build/GoBoard --sims 200`（全屏棋盘，方向键操作）
+- **macOS / Linux**：`make goboard && ./build/GoBoard --sims 200`（全屏棋盘，方向键操作）
+- **VS Code**：打开本目录 → 按 **F5** → 选「▶ 对弈：GoBoard（你 vs 内置 AI）」
+  （会先自动编译再启动；另有 9 个现成配置：最新训练结果 / 最强存档 v5 / 边训练边下棋 / 你执白 /
+  文本版 / AI 自检 / GTP…，见 `.vscode/launch.json`）
 
-对弈程序默认用**编译进程序内部**的 v3 权重。想换网络：`--weights 你的.bin`。
+### 对弈程序：权重已经编译在程序里
+
+`GoBoard` **单个可执行文件就是完整的 AI**（权重通过 `include/weights_builtin.h` 编译进去），
+拷给别人 / 换电脑都不会丢。默认内置的是**最新训练结果**（当前 = `runs_step5/latest.bin`，
+头文件注释里记着来源与规格）。换网络有四种方式：
+
+    ./build/GoBoard                                   # 内置权重（默认）
+    ./build/GoBoard --weights auto                    # 自动挑最新的训练输出（边训练边下棋）
+    ./build/GoBoard --weights runs_step5/latest.bin    # 指定任意 .bin
+    ./build/GoBoard --weights versions/goai9x9_v5_800sims.bin   # 最强存档 v5
+
+练完新的一轮之后，把新权重写进程序只要两条命令（也可在 VS Code 任务面板点
+「① 把最新训练结果写进对弈程序」）：
+
+    make embed          # = python3 tools/embed_weights.py --latest --out include/weights_builtin.h
+    make goboard        # 重新编译：内置的权重就是新的了
+    # 指定任意权重：make embed WEIGHTS=versions/goai9x9_v5_800sims.bin
+
+操作：输入坐标落子（如 `D4`，棋盘上的字母跳过 I），或 `pass` / `undo` / `hint`（AI 提示一手）/
+`save` / `new` / `resign` / `quit`。
+`--white` 让 AI 先行、`--handicap N` 让子、`--sims N` 调搜索强度（默认 200）、
+`--size N` 换棋盘、`--selftest` 让 AI 自对弈打印过程（不用交互，脚本/CI 友好）。
+没有 ncurses 的环境用 `make goboard-text`（纯文本界面，命令完全一样）。
 
 ### ② 自己训练（CPU，任何电脑都能跑）
 

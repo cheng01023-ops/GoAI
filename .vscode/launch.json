@@ -2,11 +2,51 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "▶ 对弈：GoBoard（你 vs 本地 AI）",
+      "name": "▶ 对弈：GoBoard（你 vs 内置 AI，按 F5）",
+      "type": "lldb",
+      "request": "launch",
+      "program": "${workspaceFolder}/build/GoBoard",
+      "args": ["--weights", "builtin", "--sims", "200"],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "preLaunchTask": "构建 GoBoard（对弈程序）"
+    },
+    {
+      "name": "对弈：最新训练结果（runs_step5/latest.bin）",
+      "type": "lldb",
+      "request": "launch",
+      "program": "${workspaceFolder}/build/GoBoard",
+      "args": ["--weights", "runs_step5/latest.bin", "--sims", "200"],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "preLaunchTask": "构建 GoBoard（对弈程序）"
+    },
+    {
+      "name": "对弈：最强存档 v5（versions/goai9x9_v5_800sims.bin）",
+      "type": "lldb",
+      "request": "launch",
+      "program": "${workspaceFolder}/build/GoBoard",
+      "args": ["--weights", "versions/goai9x9_v5_800sims.bin", "--sims", "200"],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "preLaunchTask": "构建 GoBoard（对弈程序）"
+    },
+    {
+      "name": "对弈：边训练边下棋（自动挑最新权重）",
       "type": "lldb",
       "request": "launch",
       "program": "${workspaceFolder}/build/GoBoard",
       "args": ["--weights", "auto", "--sims", "200"],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "preLaunchTask": "构建 GoBoard（对弈程序）"
+    },
+    {
+      "name": "对弈：你执白（AI 先行）",
+      "type": "lldb",
+      "request": "launch",
+      "program": "${workspaceFolder}/build/GoBoard",
+      "args": ["--white", "--sims", "200", "--weights", "builtin"],
       "cwd": "${workspaceFolder}",
       "console": "integratedTerminal",
       "preLaunchTask": "构建 GoBoard（对弈程序）"
@@ -22,11 +62,21 @@
       "preLaunchTask": "构建 GoBoard（对弈程序）"
     },
     {
-      "name": "对弈：你执白（AI 先行）",
+      "name": "对弈：文本版（不用 ncurses，脚本/调试友好）",
+      "type": "lldb",
+      "request": "launch",
+      "program": "${workspaceFolder}/build/GoBoard-text",
+      "args": ["--weights", "builtin", "--sims", "200"],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "preLaunchTask": "构建 GoBoard 文本版"
+    },
+    {
+      "name": "自检：AI 自对弈（不用交互）",
       "type": "lldb",
       "request": "launch",
       "program": "${workspaceFolder}/build/GoBoard",
-      "args": ["--white", "--sims", "200", "--weights", "auto"],
+      "args": ["--selftest", "--sims", "60", "--weights", "builtin"],
       "cwd": "${workspaceFolder}",
       "console": "integratedTerminal",
       "preLaunchTask": "构建 GoBoard（对弈程序）"
@@ -36,20 +86,10 @@
       "type": "lldb",
       "request": "launch",
       "program": "${workspaceFolder}/build/GoAI",
-      "args": ["gtp", "--weights", "runs_v2/latest.bin", "--sims", "400"],
+      "args": ["gtp", "--weights", "runs_step5/latest.bin", "--sims", "400"],
       "cwd": "${workspaceFolder}",
       "console": "integratedTerminal",
       "preLaunchTask": "构建 GoAI（引擎/训练）"
-    },
-    {
-      "name": "自检：AI 自对弈（不用终端界面）",
-      "type": "lldb",
-      "request": "launch",
-      "program": "${workspaceFolder}/build/GoBoard",
-      "args": ["--selftest", "--sims", "60", "--weights", "auto"],
-      "cwd": "${workspaceFolder}",
-      "console": "integratedTerminal",
-      "preLaunchTask": "构建 GoBoard（对弈程序）"
     }
   ]
 }

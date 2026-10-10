@@ -8,7 +8,31 @@
       "args": ["goboard"],
       "group": { "kind": "build", "isDefault": true },
       "problemMatcher": ["$gcc"],
-      "detail": "编译 build/GoBoard —— 本地人机对弈（ncurses）"
+      "detail": "编译 build/GoBoard —— 本地人机对弈（ncurses，权重已内置）"
+    },
+    {
+      "label": "构建 GoBoard 文本版",
+      "type": "shell",
+      "command": "make",
+      "args": ["goboard-text"],
+      "problemMatcher": ["$gcc"],
+      "detail": "编译 build/GoBoard-text —— 不依赖 ncurses 的文本对弈界面"
+    },
+    {
+      "label": "① 把最新训练结果写进对弈程序（embed 权重）",
+      "type": "shell",
+      "command": "make",
+      "args": ["embed"],
+      "problemMatcher": ["$gcc"],
+      "detail": "tools/embed_weights.py --latest 生成 include/weights_builtin.h；之后 make goboard 才生效"
+    },
+    {
+      "label": "② 写进指定权重 + 重新编译（改 WEIGHTS 路径）",
+      "type": "shell",
+      "command": "make",
+      "args": ["embed", "WEIGHTS=versions/goai9x9_v5_800sims.bin"],
+      "problemMatcher": ["$gcc"],
+      "detail": "把 versions/goai9x9_v5_800sims.bin（最强存档）编译进 GoBoard"
     },
     {
       "label": "构建 GoAI（引擎/训练）",
@@ -22,13 +46,6 @@
       "type": "shell",
       "command": "make",
       "args": ["test"],
-      "problemMatcher": ["$gcc"]
-    },
-    {
-      "label": "训练一轮（本地）",
-      "type": "shell",
-      "command": "make",
-      "args": ["all"],
       "problemMatcher": ["$gcc"]
     },
     {
