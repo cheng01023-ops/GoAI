@@ -29,6 +29,12 @@
 /* 值目标分布化的桶数：33 个桶均匀覆盖 [-1, +1]，桶心 = -1 + 2k/(K-1) */
 #define NET_VALUE_BUCKETS 33
 
+/* 标量值头 -> 分布值头 热启动的标定常数（见 net_copy_shared）：
+   logit_k = A * center_k * vo_old - GAMMA * center_k^2，数值标定后
+   期望值 ≈ tanh(vo_old)（|vo|<=4 内最大偏差约 0.10）。 */
+#define NET_VDIST_CAL_A     3.0f
+#define NET_VDIST_CAL_GAMMA 0.02f
+
 typedef struct {
     int   size;      /* board size              */
     int   nn;        /* size * size             */

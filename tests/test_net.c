@@ -707,5 +707,43 @@ int test_net_run(void) {
         net_cache_free(&c); net_free(&src); net_free(&dst);
     }
 
+    /* 标量值头 -> 分布值头：热启动必须保住"值"的读出（否则搜索瞬间变瞎） */
+    {
+        const int size = 9, P = NET_FEATURE_PLANES, C = 8, H = 16;
+        Net old; net_init_ex(&old, size, P, C, H, 0, 606);
+        Rng rw; rng_seed(&rw, 707);
+        for (int i = 0; i < old.n_params; i++) old.params[i] += (float)(rng_normal(&rw) * 0.05);
+        NetCache co, cn;
+        net_cache_init(&old, &co);
+        Net neu; net_init_full(&neu, size, P, C, H, 0, 0, 1, 808);
+        net_copy_shared(&neu, &old);
+        net_cache_init(&neu, &cn);
+        double worst = 0.0;
+        int mono_bad = 0;
+        float prev_old = -2.0f, prev_new = -2.0f;
+        for (int t = 0; t < 8; t++) {
+            Board bd; board_init(&bd, size);
+            Rng rm; rng_seed(&rm, 1000 + t * 37);
+            for (int i = 0; i < t * 3; i++) {
+                const int mv = board_random_move(&bd, &rm, 0);
+                if (!board_play(&bd, mv)) board_play(&bd, M_PASS);
+            }
+            float x[NET_FEATURE_PLANES * 81], pol[82], v_old = 0, v_new = 0;
+            net_features(&bd, x);
+            net_forward(&old, &co, x, pol, &v_old);
+            net_forward(&neu, &cn, x, pol, &v_new);
+            const double err = fabs((double)v_new - (double)v_old);
+            if (err > worst) worst = err;
+            /* 单调性：老值大 -> 新期望也大（顺序不能反） */
+            if (t > 0 && ((v_old > prev_old) != (v_new > prev_new))) mono_bad++;
+            prev_old = v_old; prev_new = v_new;
+        }
+        printf("    [值头热启动] 新期望 vs 老标量值最大偏差 %.4f\n", worst);
+        CHECK(worst < 0.12, "标量值头迁移到分布头后读出保持一致 (最大偏差 %.4f)", worst);
+        CHECK(mono_bad == 0, "迁移后的期望值与老值同序 (反序 %d 次)", mono_bad);
+        net_cache_free(&co); net_cache_free(&cn);
+        net_free(&old); net_free(&neu);
+    }
+
     return 0;
 }

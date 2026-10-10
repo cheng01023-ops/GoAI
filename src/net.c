@@ -189,6 +189,27 @@ void net_copy_shared(Net *dst, const Net *src) {
     for (size_t i = 0; i < sizeof(seg) / sizeof(seg[0]); i++)
         if (seg[i].n > 0 && seg[i].n == seg[i].sn)
             memcpy(dst->params + seg[i].d, src->params + seg[i].s, (size_t)seg[i].n * sizeof(float));
+
+    /* 标量值头 -> 分布值头：把老的标量读出"翻译"成一个分布，而不是丢掉重学。
+       老头的输出 vo = W·ha + b，令
+         logit_k = A * center_k * vo - GAMMA * center_k^2
+       这仍然是 ha 的线性函数（W2[j][k] = A*center_k*W[j]，b2[k] = A*center_k*b - GAMMA*center_k^2），
+       所以可以直接写进新头。这样 softmax 的期望 ≈ tanh(vo)（标定见 net.h）。
+       不翻译的话新头初始是均匀分布、搜索值恒为 0 —— 实测锚点胜率会瞬间掉到 2.5%。 */
+    if (dst->vdist && !src->vdist && src->len_vfc2w == dst->vhidden && src->len_vfc2b == 1) {
+        const int H2 = dst->vhidden, K = dst->nbuckets;
+        for (int j = 0; j < H2; j++) {
+            const float wj = src->params[src->off_vfc2w + j];
+            for (int k = 0; k < K; k++)
+                dst->params[dst->off_vfc2w + (size_t)j * K + k] =
+                    NET_VDIST_CAL_A * net_value_bucket_center(k) * wj;
+        }
+        const float bj = src->params[src->off_vfc2b];
+        for (int k = 0; k < K; k++) {
+            const float c = net_value_bucket_center(k);
+            dst->params[dst->off_vfc2b + k] = NET_VDIST_CAL_A * c * bj - NET_VDIST_CAL_GAMMA * c * c;
+        }
+    }
 }
 
 int net_param_count(const Net *net) { return net->n_params; }
