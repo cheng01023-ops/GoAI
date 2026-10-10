@@ -1,3 +1,8 @@
 {
-  "recommendations": ["ms-vscode.cpptools", "ms-vscode.makefile-tools"]
+  // 打开本目录时 VS Code 会提示安装这些；装了 lldb 才能用 F5 直接调试运行
+  "recommendations": [
+    "vadimcn.vscode-lldb",
+    "ms-vscode.cpptools",
+    "ms-vscode.makefile-tools"
+  ]
 }

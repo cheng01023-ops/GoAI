@@ -2,61 +2,148 @@
   "version": "2.0.0",
   "tasks": [
     {
+      "label": "🎮 运行：人机对弈（终端，内置最新 AI）",
+      "type": "shell",
+      "command": "make -s goboard && ./build/GoBoard --sims 200",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "focus": true
+      },
+      "detail": "编译 + 启动 GoBoard；下棋界面在终端里（不需要任何 VS Code 扩展）"
+    },
+    {
+      "label": "🎮 运行：你执白（AI 先行，400 次模拟）",
+      "type": "shell",
+      "command": "make -s goboard && ./build/GoBoard --white --sims 400",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "focus": true
+      }
+    },
+    {
+      "label": "🎮 运行：AI 自检（不用交互）",
+      "type": "shell",
+      "command": "make -s goboard && ./build/GoBoard --selftest --sims 60",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "focus": true
+      }
+    },
+    {
       "label": "构建 GoBoard（对弈程序）",
       "type": "shell",
       "command": "make",
-      "args": ["goboard"],
-      "group": { "kind": "build", "isDefault": true },
-      "problemMatcher": ["$gcc"],
+      "args": [
+        "goboard"
+      ],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": [
+        "$gcc"
+      ],
       "detail": "编译 build/GoBoard —— 本地人机对弈（ncurses，权重已内置）"
     },
     {
       "label": "构建 GoBoard 文本版",
       "type": "shell",
       "command": "make",
-      "args": ["goboard-text"],
-      "problemMatcher": ["$gcc"],
+      "args": [
+        "goboard-text"
+      ],
+      "problemMatcher": [
+        "$gcc"
+      ],
       "detail": "编译 build/GoBoard-text —— 不依赖 ncurses 的文本对弈界面"
     },
     {
       "label": "① 把最新训练结果写进对弈程序（embed 权重）",
       "type": "shell",
       "command": "make",
-      "args": ["embed"],
-      "problemMatcher": ["$gcc"],
+      "args": [
+        "embed"
+      ],
+      "problemMatcher": [
+        "$gcc"
+      ],
       "detail": "tools/embed_weights.py --latest 生成 include/weights_builtin.h；之后 make goboard 才生效"
     },
     {
       "label": "② 写进指定权重 + 重新编译（改 WEIGHTS 路径）",
       "type": "shell",
       "command": "make",
-      "args": ["embed", "WEIGHTS=versions/goai9x9_v5_800sims.bin"],
-      "problemMatcher": ["$gcc"],
+      "args": [
+        "embed",
+        "WEIGHTS=versions/goai9x9_v5_800sims.bin"
+      ],
+      "problemMatcher": [
+        "$gcc"
+      ],
       "detail": "把 versions/goai9x9_v5_800sims.bin（最强存档）编译进 GoBoard"
     },
     {
       "label": "构建 GoAI（引擎/训练）",
       "type": "shell",
       "command": "make",
-      "args": ["all"],
-      "problemMatcher": ["$gcc"]
+      "args": [
+        "all"
+      ],
+      "problemMatcher": [
+        "$gcc"
+      ]
     },
     {
       "label": "运行单元测试",
       "type": "shell",
       "command": "make",
-      "args": ["test"],
-      "problemMatcher": ["$gcc"]
+      "args": [
+        "test"
+      ],
+      "problemMatcher": [
+        "$gcc"
+      ]
     },
     {
       "label": "开始持续训练",
       "type": "shell",
       "command": "./build/GoAI",
-      "args": ["train", "--size", "9", "--channels", "32", "--forever",
-               "--resume", "runs_live/latest.bin", "--games", "40", "--sims", "140",
-               "--steps", "250", "--lr", "0.01", "--threads", "8",
-               "--gate", "1", "--gategames", "20", "--eval-every", "3",
-               "--plot", "1", "--out", "runs_live"],
+      "args": [
+        "train",
+        "--size",
+        "9",
+        "--channels",
+        "32",
+        "--forever",
+        "--resume",
+        "runs_live/latest.bin",
+        "--games",
+        "40",
+        "--sims",
+        "140",
+        "--steps",
+        "250",
+        "--lr",
+        "0.01",
+        "--threads",
+        "8",
+        "--gate",
+        "1",
+        "--gategames",
+        "20",
+        "--eval-every",
+        "3",
+        "--plot",
+        "1",
+        "--out",
+        "runs_live"
+      ],
       "isBackground": true,
       "problemMatcher": []
     }
