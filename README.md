@@ -37,8 +37,9 @@
 ### 对弈程序：权重已经编译在程序里
 
 `GoBoard` **单个可执行文件就是完整的 AI**（权重通过 `include/weights_builtin.h` 编译进去），
-拷给别人 / 换电脑都不会丢。默认内置的是**最新训练结果**（当前 = `runs_step5/latest.bin`，
-头文件注释里记着来源与规格）。换网络有四种方式：
+拷给别人 / 换电脑都不会丢。内置的是**目前最强存档 v5**（`versions/goai9x9_v5_800sims.bin`：
+27 800 局自对弈、每步 800 次模拟；对上一代 v4 实测 81.7%），头文件注释里记着来源与规格。
+换网络有四种方式：
 
     ./build/GoBoard                                   # 内置权重（默认）
     ./build/GoBoard --weights auto                    # 自动挑最新的训练输出（边训练边下棋）
@@ -51,6 +52,17 @@
     make embed          # = python3 tools/embed_weights.py --latest --out include/weights_builtin.h
     make goboard        # 重新编译：内置的权重就是新的了
     # 指定任意权重：make embed WEIGHTS=versions/goai9x9_v5_800sims.bin
+
+### 想直接发给别人玩？用分享包
+
+`standalone/` 就是**零依赖分享包**（源码 + 预编译 exe + 启动脚本）；打包好的压缩包在
+
+    GoBoard-9x9.zip        # 桌面也放了一份：~/Desktop/GoBoard-9x9.zip
+
+里面已经放了 macOS(arm64) 预编译版和 Windows 的 `GoBoard.exe`，对方**双击**
+`PLAY_macOS.command`（macOS）或 `PLAY_NOW.bat`（Windows）就能下，不需要编译器、
+不需要 Python。包里的 `怎么玩.md` 写了按键、换权重、改代码的位置。
+（`PLAY_NOW.bat` 会自动加载 `weights/goai9x9_v5_800sims.bin`，所以对方玩到的也是最强版。）
 
 操作：输入坐标落子（如 `D4`，棋盘上的字母跳过 I），或 `pass` / `undo` / `hint`（AI 提示一手）/
 `save` / `new` / `resign` / `quit`。
