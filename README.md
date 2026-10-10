@@ -38,7 +38,7 @@
 **macOS / Linux**
 
 ```bash
-make -s all && make -s test          # 编译 + 自检（69 项测试）
+make -s all && make -s test          # 编译 + 自检（224 项测试）
 ./build/GoAI train --size 9 --channels 32 --forever \
   --games 40 --sims 140 --steps 250 --threads 8 \
   --gate 1 --gategames 20 --eval-every 3 --out runs_live
@@ -570,6 +570,70 @@ Makefile 仍保留 `NATIVE=1` 开关，但默认关闭以保证二进制可跨�
 > 残差块少了零初始化这个"仪式性"细节，整个实验就发散了 —— 而它单靠单元测试是发现不了的，
 > 必须看真实训练的行为指标（对随机胜率、每局手数）。
 
+## 第 ⑤ 步：辅助目标（领地头 + 值分布）
+
+> 目的：提高**学习信号密度**。原来每个局面只产出 1 个胜负值（1 个标量），
+> 而 9 路一盘棋有 81 个点位的归属信息被丢掉了。这两项是 KataGo 相对 AlphaZero
+> 提升最大的两个改动。
+
+### 领地（ownership）辅助头
+
+- 在最后一个特征图后加一个 1x1 卷积头 `C -> 1`（n*n 个 logits），参数 `ow(C) + ob(1)`
+- 标签来自终局棋盘（`board_ownership`）：棋子归自己的颜色；空区只接触一种颜色就归它，
+  同时接触两色算中立。黑方视角编码 `{+1, 0 中立, -1}`，训练时按该局面的行棋方
+  翻成 `{1, 0.5, 0}`（与值头同一视角）
+- **存储**：一盘棋只存一份 81 字节 int8 的归属表，样本里只记"棋局号"，采样时按号取。
+  槽位被后面的棋局覆盖时该样本自动跳过领地损失（不会读到错的地盘），运行结束会打印数量
+- **损失**：`total = policy_ce + value + OWN_WEIGHT * own_bce`，
+  反传 `d_logit = (sigmoid(z) - target)/nn`，梯度累加到 `d_h2`（与策略/价值头相加）
+- 数据增强（8 种对称）会把归属图和棋盘、策略一起做同一个变换
+- 权重用 `--own-weight 0.15`（KataGo 同量级）；A/B 扫 0 / 0.15 / 0.3
+
+### 值目标分布化
+
+- 值头第二层从 `H -> 1` 改成 `H -> K`（K = 33 个桶，均匀覆盖 [-1, +1]），
+  损失从 MSE 改成**交叉熵**（one-hot 到 z 落入的桶，梯度 `p_k - t_k`）
+- 搜索仍然只要一个标量：分布的期望 `sum p_k * bucket_center_k`
+- ⚠️ **交叉熵与 MSE 不可比**：CSV 里 `value_loss` 换了含义（初始约 `log 33 = 3.50`），
+  判断有没有变强只看**成对开局锚点**，不要跟历史 MSE 数字比
+
+### 格式兼容（不加第三个 magic）
+
+`GOAJ` 头部第 5 个字段从 `blocks` 改成 `flags`（`blocks = flags >> 8`）：
+
+    bit0 = 新布局标记   bit1 = 有领地头   bit2 = 值头是 33 桶分布
+
+老文件照常读取：低 8 位为 0 就是"无额外头"；`blocks` 恰好是奇数时会撞上 bit0，
+所以加载时再用 `n_params` 交叉核对一次，对不上就退回"整个字段 = blocks"的旧解释
+（测试里专门覆盖了 `blocks=3` 的老文件与内置权重 `net_load_mem`）。
+
+### 命令行
+
+    ./build/GoAI train --size 9 --channels 32 --forever \
+      --own-weight 0.15 --vdist 1 --resume runs9_s800/best.bin --out runs_step5
+
+热启动：`--resume` 一个老网络时，形状相同的权重原样迁移（卷积层、策略头、
+价值头第一层），新头/新块随机初始化 —— 日志会打印 `结构 32ch -> 32ch own vdist33`。
+CSV 多了一列 `own_loss`（平均 BCE），曲线图会自动多画一格。
+
+### 测试与校验
+
+测试从 **106 项增加到 224 项**，新增的关键校验：
+
+- 领地头有限差分：全部 `C+1` 个参数，最大偏差 **2.3e-05**（0 超差）
+- 值分布头有限差分：最大偏差 **2.5e-05**（0 超差）
+- `flags` 往返存取；`GOAI` / `GOAJ(blocks=2)` / `GOAJ(blocks=3)` 老文件加载；
+  `net_load_mem`（内置权重）加载；标量值头 → 分布值头的 `net_copy_shared` 迁移
+- 终局归属：已知棋形手算核对（一子独占全盘 / 两色共存中立的空区 / 两道墙夹出的地）
+  + 不变量 `sum(own) == board_score(komi=0)`
+- 干路卷积权重的有限差分只做相关性校验：随机初始化的网络里有大量 ReLU 折点，
+  中心差分在这些点上本来就不准（h 从 1e-2 减到 1e-3 时超差数 51 → 3，是折点而非数学错误）
+
+> **顺带修掉一个老 bug**：加残差块之后，三个头部的 1x1 卷积反向用的是 `h2`
+> （conv2 的输出），而前向用的是最后一块的输出 `hB` —— 有残差块时这些权重
+> （`pw`/`vw`/新的 `ow`）的梯度全是错的，有限差分显示价值头 1x1 偏差达 0.15。
+> 现在反向和前向用同一个缓存 `h_head`，偏差降到 1.8e-04（已有 blocks=2 的回归测试）。
+
 ## 项目结构
 
 ```
@@ -586,7 +650,7 @@ gpu/train.py       纯 Python/PyTorch 训练器（另一条路，适合快速试
 gpu/goai_gpu/      规则镜像、模型定义、权重导入导出（与 C 端 .bin 格式互通）
 standalone/        可直接发给别人玩的独立包（含预编译 Windows exe）
 versions/          冻结的历史权重
-tests/             69 项单元测试（make test）
+tests/             224 项单元测试（make test）
 tools/             打包、画图、Xcode 工程生成等脚本
 ```
 
@@ -594,10 +658,18 @@ tools/             打包、画图、Xcode 工程生成等脚本
 
 C 端与 Python 端互通的自定义格式，便于跨平台交换：
 
-    uint32 magic('GOAI') | int32 size, planes, channels, vhidden, n_params | float32 参数...
+    GOAI: uint32 magic('GOAI') | int32 size, planes, channels, vhidden, n_params | float32 参数...
+    GOAJ: uint32 magic('GOAJ') | int32 size, planes, channels, vhidden, flags, n_params | float32 参数...
 
 小端 float32，**macOS / Windows / Linux 通用**。把别人练好的 `.bin` 拷过来就能用：
 `./build/GoBoard --weights 别人的.bin`
+
+`GOAJ` 的 `flags` 低 8 位是结构标志、高位是残差块数（`blocks = flags >> 8`）：
+
+    bit0 = 新布局标记（blocks 字段有效）   bit1 = 有领地辅助头   bit2 = 值头是 33 桶分布
+
+老文件（`GOAI`、以及 `blocks` 直接写在那个字段里的 `GOAJ`）都能照常读取 —— 详见下面
+「第 ⑤ 步」一节。
 
 ## 常见问题
 
@@ -662,6 +734,6 @@ policy/value network with hand-written forward/backward passes — no ML framewo
 - **Train yourself**: `./build/GoAI train --size 9 --channels 32 --forever --threads 8 --out runs_live`
 - **With an NVIDIA GPU**: `python gpu/server.py --device cuda` + `./build/GoAI gtrain --remote 127.0.0.1:8899`
 - **Measured**: 35,320 self-play games in 8.6 h on an 8-core laptop → 100% vs random, 98.8% vs the previous generation
-- **Tests**: `make test` (69 checks). License: MIT.
+- **Tests**: `make test` (224 checks). License: MIT.
 
 Weights use a simple little-endian float32 `.bin` format shared between the C and Python sides.

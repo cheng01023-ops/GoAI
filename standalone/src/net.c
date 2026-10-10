@@ -26,9 +26,29 @@ void net_config_default(int size, int *planes, int *channels, int *vhidden) {
     if (channels) *channels = (size >= 13) ? 32 : 16;
 }
 
+/* 参数总量：与 layout() 必须严格一致（加载旧文件时用它交叉核对 flags 解释） */
+static int params_for(int nn, int planes, int channels, int vhidden, int blocks,
+                      int own_head, int vdist) {
+    const int K = vdist ? NET_VALUE_BUCKETS : 1;
+    int o = 0;
+    o += channels * planes * 9 + channels;                        /* conv1 */
+    o += channels * channels * 9 + channels;                      /* conv2 */
+    o += blocks * (2 * channels * channels * 9 + 2 * channels);   /* 残差块 */
+    o += 2 * channels + 2;                                        /* 策略头 1x1 */
+    o += (nn + 1) * 2 * nn + (nn + 1);                            /* 策略全连接 */
+    o += channels + 1;                                            /* 价值头 1x1 */
+    o += vhidden * nn + vhidden;                                  /* 价值全连接 1 */
+    o += vhidden * K + K;                                         /* 价值全连接 2（K 桶） */
+    if (own_head) o += channels + 1;                              /* 领地头 1x1 */
+    return o;
+}
+
 static void layout(Net *net) {
     int o = 0;
     const int nn = net->nn, P = net->planes, C = net->channels, H = net->vhidden;
+    net->flags = NET_FLAG_BLOCKS | (net->own_head ? NET_FLAG_OWN : 0) |
+                 (net->vdist ? NET_FLAG_VDIST : 0) | ((uint32_t)net->blocks << 8);
+    net->nbuckets = net->vdist ? NET_VALUE_BUCKETS : 1;
 #define LAY(field, len)                                                          \
     do {                                                                         \
         net->off_##field = o;                                                    \
@@ -44,9 +64,40 @@ static void layout(Net *net) {
     LAY(pfcw, (nn + 1) * 2 * nn); LAY(pfcb, nn + 1);
     LAY(vw, C);            LAY(vb, 1);
     LAY(vfc1w, H * nn);    LAY(vfc1b, H);
-    LAY(vfc2w, H);         LAY(vfc2b, 1);
+    LAY(vfc2w, H * net->nbuckets); LAY(vfc2b, net->nbuckets);
+    /* 领地头放最后：这样老文件的参数前缀能原样搬进新网络（net_copy_shared） */
+    if (net->own_head) { LAY(ow, C); LAY(ob, 1); }
+    else { net->off_ow = o; net->off_ob = o; net->len_ow = 0; net->len_ob = 0; }
 #undef LAY
     net->n_params = o;
+}
+
+/* 值分布的桶心：33 个桶均匀覆盖 [-1, +1] */
+float net_value_bucket_center(int k) {
+    if (k < 0) k = 0;
+    if (k > NET_VALUE_BUCKETS - 1) k = NET_VALUE_BUCKETS - 1;
+    return -1.0f + 2.0f * (float)k / (float)(NET_VALUE_BUCKETS - 1);
+}
+
+int net_value_bucket_index(float z) {
+    if (z < -1.0f) z = -1.0f;
+    if (z > 1.0f) z = 1.0f;
+    const float t = (z + 1.0f) * 0.5f * (float)(NET_VALUE_BUCKETS - 1);
+    int k = (int)(t + 0.5f);
+    if (k < 0) k = 0;
+    if (k > NET_VALUE_BUCKETS - 1) k = NET_VALUE_BUCKETS - 1;
+    return k;
+}
+
+void net_arch_str(const Net *net, char *buf, size_t n) {
+    char tails[64];
+    tails[0] = 0;
+    if (net->blocks > 0) snprintf(tails + strlen(tails), sizeof(tails) - strlen(tails),
+                                  " %dblk", net->blocks);
+    if (net->own_head)   snprintf(tails + strlen(tails), sizeof(tails) - strlen(tails), " own");
+    if (net->vdist)      snprintf(tails + strlen(tails), sizeof(tails) - strlen(tails),
+                                  " vdist%d", NET_VALUE_BUCKETS);
+    snprintf(buf, n, "%dch%s", net->channels, tails);
 }
 
 void net_init(Net *net, int size, int planes, int channels, int vhidden, uint64_t seed) {
@@ -55,8 +106,15 @@ void net_init(Net *net, int size, int planes, int channels, int vhidden, uint64_
 
 void net_init_ex(Net *net, int size, int planes, int channels, int vhidden,
                  int blocks, uint64_t seed) {
+    net_init_full(net, size, planes, channels, vhidden, blocks, 0, 0, seed);
+}
+
+void net_init_full(Net *net, int size, int planes, int channels, int vhidden,
+                   int blocks, int own_head, int vdist, uint64_t seed) {
     memset(net, 0, sizeof(*net));
     net->blocks = blocks < 0 ? 0 : blocks;
+    net->own_head = own_head ? 1 : 0;
+    net->vdist = vdist ? 1 : 0;
     net->size = size;
     net->nn = size * size;
     net->planes = planes;
@@ -91,6 +149,16 @@ void net_init_ex(Net *net, int size, int planes, int channels, int vhidden,
     for (int i = 0; i < net->len_vw; i++)     p[net->off_vw + i]     = (float)(rng_normal(&rng) * 0.1);
     for (int i = 0; i < net->len_vfc1w; i++)  p[net->off_vfc1w + i]  = (float)(rng_normal(&rng) * sv);
     for (int i = 0; i < net->len_vfc2w; i++)  p[net->off_vfc2w + i]  = (float)(rng_normal(&rng) * so);
+    /* 值分布头：K 个桶的 logits 初始化得接近 0 -> softmax 近似均匀 -> 搜索值约 0，
+       和原来标量头"开始时 v 无信息"的行为一致。 */
+    for (int i = 0; i < net->len_vfc2b; i++)  p[net->off_vfc2b + i]  = 0.0f;
+    /* 领地头：小权重（1x1 conv C->1），让初始 logits 贴近 0，sigmoid 不饱和。
+       OWN_WEIGHT 会把它放大成有效的辅助梯度，所以要压得比策略头更小。 */
+    if (net->own_head) {
+        const double sow = 0.1 / sqrt((double)channels);
+        for (int i = 0; i < net->len_ow; i++) p[net->off_ow + i] = (float)(rng_normal(&rng) * sow);
+        for (int i = 0; i < net->len_ob; i++) p[net->off_ob + i] = 0.0f;
+    }
 }
 
 void net_free(Net *net) { free(net->params); net->params = NULL; net->n_params = 0; }
@@ -100,17 +168,26 @@ void net_free(Net *net) { free(net->params); net->params = NULL; net->n_params =
 void net_copy_shared(Net *dst, const Net *src) {
     if (dst->size != src->size || dst->planes != src->planes ||
         dst->channels != src->channels || dst->vhidden != src->vhidden) return;
-    const struct { int d, s, n; } seg[] = {
-        { dst->off_c1w, src->off_c1w, src->len_c1w }, { dst->off_c1b, src->off_c1b, src->len_c1b },
-        { dst->off_c2w, src->off_c2w, src->len_c2w }, { dst->off_c2b, src->off_c2b, src->len_c2b },
-        { dst->off_pw, src->off_pw, src->len_pw },    { dst->off_pb, src->off_pb, src->len_pb },
-        { dst->off_pfcw, src->off_pfcw, src->len_pfcw }, { dst->off_pfcb, src->off_pfcb, src->len_pfcb },
-        { dst->off_vw, src->off_vw, src->len_vw },    { dst->off_vb, src->off_vb, src->len_vb },
-        { dst->off_vfc1w, src->off_vfc1w, src->len_vfc1w }, { dst->off_vfc1b, src->off_vfc1b, src->len_vfc1b },
-        { dst->off_vfc2w, src->off_vfc2w, src->len_vfc2w }, { dst->off_vfc2b, src->off_vfc2b, src->len_vfc2b },
+    /* 只在两端长度一致时拷贝：值头从标量(H)换成分布(H*K)时形状不同，不能硬拷
+       （新头保持 net_init_full 的随机初始化）。 */
+    const struct { int d, s, n, sn; } seg[] = {
+        { dst->off_c1w, src->off_c1w, dst->len_c1w, src->len_c1w },
+        { dst->off_c1b, src->off_c1b, dst->len_c1b, src->len_c1b },
+        { dst->off_c2w, src->off_c2w, dst->len_c2w, src->len_c2w },
+        { dst->off_c2b, src->off_c2b, dst->len_c2b, src->len_c2b },
+        { dst->off_pw, src->off_pw, dst->len_pw, src->len_pw },
+        { dst->off_pb, src->off_pb, dst->len_pb, src->len_pb },
+        { dst->off_pfcw, src->off_pfcw, dst->len_pfcw, src->len_pfcw },
+        { dst->off_pfcb, src->off_pfcb, dst->len_pfcb, src->len_pfcb },
+        { dst->off_vw, src->off_vw, dst->len_vw, src->len_vw },
+        { dst->off_vb, src->off_vb, dst->len_vb, src->len_vb },
+        { dst->off_vfc1w, src->off_vfc1w, dst->len_vfc1w, src->len_vfc1w },
+        { dst->off_vfc1b, src->off_vfc1b, dst->len_vfc1b, src->len_vfc1b },
+        { dst->off_vfc2w, src->off_vfc2w, dst->len_vfc2w, src->len_vfc2w },
+        { dst->off_vfc2b, src->off_vfc2b, dst->len_vfc2b, src->len_vfc2b },
     };
     for (size_t i = 0; i < sizeof(seg) / sizeof(seg[0]); i++)
-        if (seg[i].n > 0)
+        if (seg[i].n > 0 && seg[i].n == seg[i].sn)
             memcpy(dst->params + seg[i].d, src->params + seg[i].s, (size_t)seg[i].n * sizeof(float));
 }
 
@@ -144,8 +221,11 @@ void net_cache_init(const Net *net, NetCache *c) {
     c->logits = alloc_floats(nn + 1);
     c->probs  = alloc_floats(nn + 1);
     c->zv     = alloc_floats(nn);
+    c->zo     = alloc_floats(nn);                       /* 领地 logits */
     c->za     = alloc_floats(H);
     c->ha     = alloc_floats(H);
+    c->vlogits = alloc_floats(NET_VALUE_BUCKETS);       /* 值分布 */
+    c->vprobs  = alloc_floats(NET_VALUE_BUCKETS);
     c->dx     = alloc_floats(P * nn);
     c->d_h2   = alloc_floats(C * nn);
     c->d_pre2 = alloc_floats(C * nn);
@@ -153,6 +233,7 @@ void net_cache_init(const Net *net, NetCache *c) {
     c->d_pre1 = alloc_floats(C * nn);
     c->d_zp   = alloc_floats(2 * nn);
     c->d_zv   = alloc_floats(nn);
+    c->d_zo   = alloc_floats(nn);
     c->d_ha   = alloc_floats(H);
     c->g_scratch = alloc_floats((size_t)net->n_params);
     /* 残差块的前向/反向缓存 */
@@ -170,9 +251,10 @@ void net_cache_init(const Net *net, NetCache *c) {
 
 void net_cache_free(NetCache *c) {
     free(c->x); free(c->z1); free(c->h1); free(c->z2); free(c->h2); free(c->zp);
-    free(c->logits); free(c->probs); free(c->zv); free(c->za); free(c->ha); free(c->dx);
+    free(c->logits); free(c->probs); free(c->zv); free(c->zo); free(c->za); free(c->ha); free(c->dx);
+    free(c->vlogits); free(c->vprobs);
     free(c->d_h2); free(c->d_pre2); free(c->d_h1); free(c->d_pre1);
-    free(c->d_zp); free(c->d_zv); free(c->d_ha); free(c->g_scratch);
+    free(c->d_zp); free(c->d_zv); free(c->d_zo); free(c->d_ha); free(c->g_scratch);
     free(c->blk); c->blk = NULL;
     free(c->dblk); c->dblk = NULL;
     memset(c, 0, sizeof(*c));
@@ -283,6 +365,9 @@ void net_forward(const Net *net, NetCache *c, const float *x, float *policy, flo
 
     conv1x1_fwd(w + net->off_pw, w + net->off_pb, h, C, 2, n, c->zp);
     conv1x1_fwd(w + net->off_vw, w + net->off_vb, h, C, 1, n, c->zv);
+    /* 领地头：1x1 conv C->1，每个点位一个 logit（训练时 sigmoid 后算 BCE；
+       下棋/搜索用不到这个头） */
+    if (net->own_head) conv1x1_fwd(w + net->off_ow, w + net->off_ob, h, C, 1, n, c->zo);
 
     const float *pfcw = w + net->off_pfcw;
     const float *pfcb = w + net->off_pfcb;
@@ -304,10 +389,25 @@ void net_forward(const Net *net, NetCache *c, const float *x, float *policy, flo
         c->za[j] = s;
         c->ha[j] = s > 0.0f ? s : 0.0f;
     }
-    float vo = w[net->off_vfc2b];
-    for (int j = 0; j < H; j++) vo += w[net->off_vfc2w + j] * c->ha[j];
-    c->vo = vo;
-    c->v = tanh_f(vo);
+    if (net->vdist) {
+        /* 值分布头：K 个桶的 logits -> softmax -> 期望值（搜索用期望，训练用交叉熵） */
+        const int K = net->nbuckets;
+        for (int k = 0; k < K; k++) {
+            float s = w[net->off_vfc2b + k];
+            for (int j = 0; j < H; j++) s += w[net->off_vfc2w + (size_t)j * K + k] * c->ha[j];
+            c->vlogits[k] = s;
+        }
+        softmax_inplace(c->vlogits, c->vprobs, K);
+        double e = 0.0;
+        for (int k = 0; k < K; k++) e += (double)c->vprobs[k] * (double)net_value_bucket_center(k);
+        c->vo = (float)e;
+        c->v = (float)e;
+    } else {
+        float vo = w[net->off_vfc2b];
+        for (int j = 0; j < H; j++) vo += w[net->off_vfc2w + j] * c->ha[j];
+        c->vo = vo;
+        c->v = tanh_f(vo);
+    }
     if (value) *value = c->v;
 }
 
@@ -393,31 +493,61 @@ static void conv1x1_bwd(const float *w, const float *in, const float *dout, int 
     }
 }
 
+/* 兼容包装：只有策略 + 价值两个目标 */
 float net_backward(const Net *net, NetCache *c, const float *pi, float z, float *grad,
                    float *out_policy_loss, float *out_value_loss) {
+    return net_backward_ex(net, c, pi, z, NULL, 0.0f, grad,
+                           out_policy_loss, out_value_loss, NULL);
+}
+
+float net_backward_ex(const Net *net, NetCache *c, const float *pi, float z,
+                      const float *own_target, float own_weight, float *grad,
+                      float *out_policy_loss, float *out_value_loss, float *out_own_loss) {
     const int nn = net->nn, P = net->planes, C = net->channels, H = net->vhidden;
     float *g = grad;
     if (!g) { g = c->g_scratch; memset(g, 0, (size_t)net->n_params * sizeof(float)); }
+    /* 三个头部的输入是 h（有残差块时 = 最后一块的输出 hB，否则 = conv2 的输出 h2）。
+       以前这里直接用了 c->h2：加残差块之后头部 1x1 卷积的权重梯度就错了
+       （前向用的是块的输出）。有限差分校验：blocks=2 时价值头 1x1 权重偏差达 0.15。 */
+    const float *h_head = c->h2;
+    if (net->blocks > 0)
+        h_head = c->blk + (size_t)(net->blocks - 1) * 4 * C * nn + 3 * C * nn;
 
-    /* ---- loss and its derivatives ---- */
+    /* ---- 策略损失 CE(policy, pi) ---- */
     double ce = 0.0;
     for (int m = 0; m <= nn; m++) {
         const double p = c->probs[m] > 1e-12f ? (double)c->probs[m] : 1e-12;
         ce -= (double)pi[m] * log(p);
     }
-    const double dv = 2.0 * ((double)c->v - (double)z);         /* dL/dv  */
-    const double mse = (double)(c->v - z) * (double)(c->v - z);
     if (out_policy_loss) *out_policy_loss = (float)ce;
-    if (out_value_loss)  *out_value_loss  = (float)mse;
 
-    /* ---- value head ---- */
-    const float dvo = (float)(dv * (1.0 - (double)c->v * (double)c->v));
+    /* ---- 价值头：分布走交叉熵，标量走 MSE ---- */
+    double vl = 0.0;
     {
         float *gvfc2w = g + net->off_vfc2w, *gvfc2b = g + net->off_vfc2b;
-        gvfc2b[0] += dvo;
-        for (int j = 0; j < H; j++) {
-            gvfc2w[j] += dvo * c->ha[j];
-            c->d_ha[j] = dvo * net->params[net->off_vfc2w + j];
+        if (net->vdist) {
+            const int K = net->nbuckets;
+            const int tgt = net_value_bucket_index(z);     /* z 落入的桶（one-hot 目标） */
+            const float pt = c->vprobs[tgt] > 1e-12f ? c->vprobs[tgt] : 1e-12f;
+            vl = -log((double)pt);
+            memset(c->d_ha, 0, (size_t)H * sizeof(float));
+            for (int k = 0; k < K; k++) {
+                const float dl = c->vprobs[k] - (k == tgt ? 1.0f : 0.0f);   /* dL/dlogit */
+                gvfc2b[k] += dl;
+                for (int j = 0; j < H; j++) {
+                    gvfc2w[(size_t)j * K + k] += dl * c->ha[j];
+                    c->d_ha[j] += dl * net->params[net->off_vfc2w + (size_t)j * K + k];
+                }
+            }
+        } else {
+            const double dv = 2.0 * ((double)c->v - (double)z);         /* dL/dv  */
+            vl = (double)(c->v - z) * (double)(c->v - z);
+            const float dvot = (float)(dv * (1.0 - (double)c->v * (double)c->v));
+            gvfc2b[0] += dvot;
+            for (int j = 0; j < H; j++) {
+                gvfc2w[j] += dvot * c->ha[j];
+                c->d_ha[j] = dvot * net->params[net->off_vfc2w + j];
+            }
         }
         float *gvfc1w = g + net->off_vfc1w, *gvfc1b = g + net->off_vfc1b;
         memset(c->d_zv, 0, (size_t)nn * sizeof(float));
@@ -434,11 +564,12 @@ float net_backward(const Net *net, NetCache *c, const float *pi, float z, float 
             }
         }
         memset(c->d_h2, 0, (size_t)C * nn * sizeof(float));
-        conv1x1_bwd(net->params + net->off_vw, c->h2, c->d_zv, C, 1, net->size,
+        conv1x1_bwd(net->params + net->off_vw, h_head, c->d_zv, C, 1, net->size,
                     g + net->off_vw, g + net->off_vb, c->d_h2);
     }
+    if (out_value_loss) *out_value_loss = (float)vl;
 
-    /* ---- policy head ---- */
+    /* ---- 策略头 ---- */
     {
         float *gpfcw = g + net->off_pfcw, *gpfcb = g + net->off_pfcb;
         memset(c->d_zp, 0, (size_t)2 * nn * sizeof(float));
@@ -452,9 +583,29 @@ float net_backward(const Net *net, NetCache *c, const float *pi, float z, float 
                 c->d_zp[i] += dl * wrow[i];
             }
         }
-        conv1x1_bwd(net->params + net->off_pw, c->h2, c->d_zp, C, 2, net->size,
+        conv1x1_bwd(net->params + net->off_pw, h_head, c->d_zp, C, 2, net->size,
                     g + net->off_pw, g + net->off_pb, c->d_h2);
     }
+
+    /* ---- 领地头：BCE（对 sigmoid(logit)）----
+       平均到每个点位（/nn），再乘 OWN_WEIGHT；梯度 d_logit = (sigmoid(z) - t)/nn。
+       梯度累加到 d_h2，与策略/价值头的梯度相加 ✓ */
+    double ol = 0.0;
+    if (net->own_head && own_target && own_weight != 0.0f) {
+        const float scale = own_weight / (float)nn;
+        for (int i = 0; i < nn; i++) {
+            const float zi = c->zo[i];
+            const float t = own_target[i];
+            /* 数值稳定的 BCE：max(z,0) - z*t + log1p(exp(-|z|)) */
+            ol += (double)(fmaxf(zi, 0.0f) - zi * t + log1pf(expf(-fabsf(zi))));
+            const float p = 1.0f / (1.0f + expf(-zi));      /* sigmoid */
+            c->d_zo[i] = (p - t) * scale;
+        }
+        conv1x1_bwd(net->params + net->off_ow, h_head, c->d_zo, C, 1, net->size,
+                    g + net->off_ow, g + net->off_ob, c->d_h2);
+        ol /= (double)nn;
+    }
+    if (out_own_loss) *out_own_loss = (float)ol;
 
     /* ---- 残差块反传（从最后一塊往前）---- */
     const float *dcur = c->d_h2;      /* 头部累积的梯度（对最终激活） */
@@ -489,7 +640,7 @@ float net_backward(const Net *net, NetCache *c, const float *pi, float z, float 
     conv3x3_bwd(net->params + net->off_c1w, c->z1, c->d_h1, c->x, P, C, net->size,
                 g + net->off_c1w, g + net->off_c1b, c->dx);
 
-    return (float)(ce + mse);
+    return (float)(ce + vl + (double)own_weight * ol);
 }
 
 void net_adam(Net *net, float *grad, float *m, float *v, int step, float lr,
@@ -524,8 +675,33 @@ typedef struct {
 
 typedef struct {
     uint32_t magic;
-    int32_t  size, planes, channels, vhidden, blocks, n_params;
-} NetHeader2;         /* 新格式（带残差块数）*/
+    int32_t  size, planes, channels, vhidden, flags, n_params;
+} NetHeader2;         /* 新格式：flags 低 8 位是特性位，高位是残差块数 */
+/* NetHeader2 的第 5 个 int32 在老文件里叫 blocks。新代码按 flags 解释，
+   并用 n_params 交叉核对（见 net_decode_flags），所以两种文件都能读。 */
+
+/* 解析头部字段 -> (blocks, own_head, vdist)。
+   规则：
+     1) bit0 置位 = 新布局：blocks = flags >> 8，bit1/bit2 是额外头；
+     2) bit0 清零 = 老文件，整个字段就是 blocks（无额外头）；
+     3) 新解释算出来的 n_params 与头部不符，而老解释符合 -> 按老解释
+        （老文件 blocks 恰好是奇数时会命中这条，保证向后兼容）。 */
+static void net_decode_flags(int32_t raw, int nn, int planes, int channels, int vhidden,
+                             int n_params, int *blocks, int *own_head, int *vdist) {
+    const uint32_t f = (uint32_t)raw;
+    int b = (int)(f >> 8);
+    int o = (f & NET_FLAG_OWN) ? 1 : 0;
+    int v = (f & NET_FLAG_VDIST) ? 1 : 0;
+    if (!(f & NET_FLAG_BLOCKS)) {
+        b = (int)f; o = 0; v = 0;
+    } else if (params_for(nn, planes, channels, vhidden, b, o, v) != n_params) {
+        const int b_legacy = (int)f;
+        if (params_for(nn, planes, channels, vhidden, b_legacy, 0, 0) == n_params) {
+            b = b_legacy; o = 0; v = 0;
+        }
+    }
+    *blocks = b; *own_head = o; *vdist = v;
+}
 
 bool net_save(const Net *net, const char *path) {
     /* 先写临时文件再改名：这样正在对弈的程序读到的永远是完整文件
@@ -537,7 +713,10 @@ bool net_save(const Net *net, const char *path) {
     NetHeader2 h;
     h.magic = NET_MAGIC2;
     h.size = net->size; h.planes = net->planes; h.channels = net->channels;
-    h.vhidden = net->vhidden; h.blocks = net->blocks; h.n_params = net->n_params;
+    h.vhidden = net->vhidden;
+    h.flags = (int32_t)(NET_FLAG_BLOCKS | (net->own_head ? NET_FLAG_OWN : 0) |
+                        (net->vdist ? NET_FLAG_VDIST : 0) | ((uint32_t)net->blocks << 8));
+    h.n_params = net->n_params;
     const bool ok = fwrite(&h, sizeof(h), 1, f) == 1 &&
                     fwrite(net->params, sizeof(float), (size_t)net->n_params, f) == (size_t)net->n_params;
     fflush(f);
@@ -552,7 +731,7 @@ bool net_load_mem(Net *net, const void *data, size_t len) {
     if (!data || len < sizeof(NetHeader)) return false;
     NetHeader h;
     memcpy(&h, data, sizeof(h));
-    int blocks = 0;
+    int blocks = 0, own = 0, vdist = 0;
     size_t hdr = sizeof(NetHeader);
     if (h.magic == NET_MAGIC2) {
         if (len < sizeof(NetHeader2)) return false;
@@ -560,7 +739,9 @@ bool net_load_mem(Net *net, const void *data, size_t len) {
         memcpy(&h2, data, sizeof(h2));
         h.size = h2.size; h.planes = h2.planes; h.channels = h2.channels;
         h.vhidden = h2.vhidden; h.n_params = h2.n_params;
-        blocks = h2.blocks; hdr = sizeof(NetHeader2);
+        net_decode_flags(h2.flags, h.size * h.size, h.planes, h.channels, h.vhidden,
+                         h.n_params, &blocks, &own, &vdist);
+        hdr = sizeof(NetHeader2);
     } else if (h.magic != NET_MAGIC) {
         return false;
     }
@@ -571,9 +752,9 @@ bool net_load_mem(Net *net, const void *data, size_t len) {
     }
     if (net->params == NULL || net->size != h.size || net->planes != h.planes ||
         net->channels != h.channels || net->vhidden != h.vhidden || net->n_params != h.n_params ||
-        net->blocks != blocks) {
+        net->blocks != blocks || net->own_head != own || net->vdist != vdist) {
         net_free(net);
-        net_init_ex(net, h.size, h.planes, h.channels, h.vhidden, blocks, 1);
+        net_init_full(net, h.size, h.planes, h.channels, h.vhidden, blocks, own, vdist, 1);
     }
     memcpy(net->params, (const unsigned char *)data + hdr,
            (size_t)net->n_params * sizeof(float));
@@ -588,7 +769,7 @@ bool net_load(Net *net, const char *path) {
     NetHeader h;
     memset(&h, 0, sizeof(h));
     h.magic = magic;
-    int blocks = 0;
+    int blocks = 0, own = 0, vdist = 0;
     if (magic == NET_MAGIC2) {
         NetHeader2 h2;
         memset(&h2, 0, sizeof(h2));
@@ -597,7 +778,9 @@ bool net_load(Net *net, const char *path) {
             fclose(f); return false;
         }
         h.size = h2.size; h.planes = h2.planes; h.channels = h2.channels;
-        h.vhidden = h2.vhidden; h.n_params = h2.n_params; blocks = h2.blocks;
+        h.vhidden = h2.vhidden; h.n_params = h2.n_params;
+        net_decode_flags(h2.flags, h.size * h.size, h.planes, h.channels, h.vhidden,
+                         h.n_params, &blocks, &own, &vdist);
     } else if (magic == NET_MAGIC) {
         if (fread((unsigned char *)&h + sizeof(magic), sizeof(h) - sizeof(magic), 1, f) != 1) {
             fclose(f); return false;
@@ -607,9 +790,9 @@ bool net_load(Net *net, const char *path) {
     }
     if (net->params == NULL || net->size != h.size || net->planes != h.planes ||
         net->channels != h.channels || net->vhidden != h.vhidden || net->n_params != h.n_params ||
-        net->blocks != blocks) {
+        net->blocks != blocks || net->own_head != own || net->vdist != vdist) {
         net_free(net);
-        net_init_ex(net, h.size, h.planes, h.channels, h.vhidden, blocks, 1);
+        net_init_full(net, h.size, h.planes, h.channels, h.vhidden, blocks, own, vdist, 1);
     }
     const size_t got = fread(net->params, sizeof(float), (size_t)net->n_params, f);
     fclose(f);

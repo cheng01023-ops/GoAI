@@ -1,0 +1,7 @@
+继续训练：已载入 runs9_s800/best.bin（结构 32ch -> 32ch own vdist33，共享权重已迁移，新头随机初始化）
+=== GoAI 持续自我迭代训练 ===
+  棋盘 9x9 · 32ch own vdist33 · 每步 400 次模拟 · 每轮 100 局 · 10 线程
+  辅助头：领地 BCE 权重 0.150（数据增强会同步变换归属图）
+  值头：33 桶分布（交叉熵；这个数字与以前的 MSE 不可比）
+  输出目录 runs_step5_smoke/  （latest.bin / best.bin / train_log.csv / status.txt）
+  模式：训练 2 轮后结束

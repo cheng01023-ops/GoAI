@@ -111,7 +111,8 @@ def plot(csv_path, out_path):
     rows = load(csv_path)
     if not rows:
         print('no data'); return 1
-    W, H = 980, 1020
+    has_own = 'own_loss' in rows[0]          # 第 ⑤ 步的 CSV 才有这一列
+    W, H = 980, 1360 if has_own else 1020
     cv = Canvas(W, H, (255,255,255))
     total_games = 0
 
@@ -162,8 +163,14 @@ def plot(csv_path, out_path):
           lambda v: '%.2f' % v)
     panel(680, 1020, 'GOAI TRAINING - VALUE LOSS',
           [('VALUE', 'value_loss', (20,150,80))],
-          0, max(0.5, max(r['value_loss'] for r in rows)*1.3), 'MEAN SQUARE ERROR',
+          0, max(0.5, max(r['value_loss'] for r in rows)*1.3),
+          'MSE (SCALAR HEAD) / CROSS ENTROPY (DIST HEAD)',
           lambda v: '%.2f' % v)
+    if has_own:
+        panel(1020, 1360, 'GOAI TRAINING - OWNERSHIP LOSS (STEP 5)',
+              [('OWN', 'own_loss', (150,90,20))],
+              0, max(0.5, max(r['own_loss'] for r in rows)*1.3), 'BCE, MEAN OVER POINTS',
+              lambda v: '%.2f' % v)
 
     # fix: the y axis of panel 1 is a ratio, draw its labels as percentages
     cv.save(out_path)

@@ -38,6 +38,11 @@ int      board_move_from_index(const Board *b, int idx);
 bool     board_point_is_eye_like(const Board *b, int p, int color);
 int      board_random_move(const Board *b, Rng *rng, int min_moves_before_pass);
 double   board_score(const Board *b, double komi);           /* black - white - komi */
+/* 终局归属（黑方视角，第 ⑤ 步的领地标签）：
+   +1 = 黑确定拥有（黑子 / 只被黑子围住的空区），-1 = 白确定拥有，
+    0 = 中立（空区同时接触两色，或者空盘没有棋子）。
+   与 board_score 的 Tromp-Taylor 数子规则一致（棋盘上所有子都算活）。 */
+void     board_ownership(const Board *b, int8_t *own);
 int      board_winner(const Board *b, double komi);          /* 1 black, 2 white, 0 jigo */
 float    board_playout_value(Board *b, Rng *rng, int max_moves, double komi);
 void     board_to_string(const Board *b, char *buf, size_t buflen);

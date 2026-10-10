@@ -506,6 +506,12 @@ float net_backward_ex(const Net *net, NetCache *c, const float *pi, float z,
     const int nn = net->nn, P = net->planes, C = net->channels, H = net->vhidden;
     float *g = grad;
     if (!g) { g = c->g_scratch; memset(g, 0, (size_t)net->n_params * sizeof(float)); }
+    /* 三个头部的输入是 h（有残差块时 = 最后一块的输出 hB，否则 = conv2 的输出 h2）。
+       以前这里直接用了 c->h2：加残差块之后头部 1x1 卷积的权重梯度就错了
+       （前向用的是块的输出）。有限差分校验：blocks=2 时价值头 1x1 权重偏差达 0.15。 */
+    const float *h_head = c->h2;
+    if (net->blocks > 0)
+        h_head = c->blk + (size_t)(net->blocks - 1) * 4 * C * nn + 3 * C * nn;
 
     /* ---- 策略损失 CE(policy, pi) ---- */
     double ce = 0.0;
@@ -558,7 +564,7 @@ float net_backward_ex(const Net *net, NetCache *c, const float *pi, float z,
             }
         }
         memset(c->d_h2, 0, (size_t)C * nn * sizeof(float));
-        conv1x1_bwd(net->params + net->off_vw, c->h2, c->d_zv, C, 1, net->size,
+        conv1x1_bwd(net->params + net->off_vw, h_head, c->d_zv, C, 1, net->size,
                     g + net->off_vw, g + net->off_vb, c->d_h2);
     }
     if (out_value_loss) *out_value_loss = (float)vl;
@@ -577,7 +583,7 @@ float net_backward_ex(const Net *net, NetCache *c, const float *pi, float z,
                 c->d_zp[i] += dl * wrow[i];
             }
         }
-        conv1x1_bwd(net->params + net->off_pw, c->h2, c->d_zp, C, 2, net->size,
+        conv1x1_bwd(net->params + net->off_pw, h_head, c->d_zp, C, 2, net->size,
                     g + net->off_pw, g + net->off_pb, c->d_h2);
     }
 
@@ -595,7 +601,7 @@ float net_backward_ex(const Net *net, NetCache *c, const float *pi, float z,
             const float p = 1.0f / (1.0f + expf(-zi));      /* sigmoid */
             c->d_zo[i] = (p - t) * scale;
         }
-        conv1x1_bwd(net->params + net->off_ow, c->h2, c->d_zo, C, 1, net->size,
+        conv1x1_bwd(net->params + net->off_ow, h_head, c->d_zo, C, 1, net->size,
                     g + net->off_ow, g + net->off_ob, c->d_h2);
         ol /= (double)nn;
     }

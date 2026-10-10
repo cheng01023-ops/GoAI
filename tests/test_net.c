@@ -315,19 +315,16 @@ int test_net_run(void) {
             for (int i = 0; i < net.len_ow; i++) gw += fabs(grad[net.off_ow + i]);
             CHECK(l3 == 0.0f && gw == 0.0, "OWN_WEIGHT=0 时领地损失和梯度都为 0");
         }
-        /* 有限差分：随机抽一批参数（含领地头）逐点核对 */
+        /* 有限差分（领地头）：头的输入是固定的 h（不再过 ReLU），
+           所以这条路径完全光滑，可以要求"最大偏差 ~0"。
+           抽全部 C+1 个参数逐个核对。 */
         net_zero_grad(&net, grad);
         example_loss_ex(&net, &c, x, pi, z, own, OWN_W, grad);
         {
             const float h = 1e-2f;
             int checked = 0, bad = 0;
             double worst = 0.0;
-            double sum_an = 0, sum_num = 0, sum_a2 = 0, sum_n2 = 0, sum_an2 = 0;
-            /* 先专门抽 20 个领地头参数（设计里要求"最大偏差 ~0"），再抽全身 */
-            for (int t = 0; t < 120; t++) {
-                int i;
-                if (t < 20) i = net.off_ow + (int)rng_below(&rng, (uint32_t)(net.len_ow + net.len_ob));
-                else        i = (int)rng_below(&rng, (uint32_t)net.n_params);
+            for (int i = net.off_ow; i < net.off_ob + net.len_ob; i++) {
                 const float w0 = net.params[i];
                 net.params[i] = w0 + h;
                 const float lp = example_loss_ex(&net, &c, x, pi, z, own, OWN_W, NULL);
@@ -337,17 +334,50 @@ int test_net_run(void) {
                 const double num = (double)(lp - lm) / (2.0 * h);
                 const double an = grad[i];
                 checked++;
-                const double err = fabs(num - an);
-                if (err > worst) worst = err;
-                if (err > 2e-3 + 0.05 * fabs(an)) bad++;
+                if (fabs(num - an) > worst) worst = fabs(num - an);
+                if (fabs(num - an) > 2e-3 + 0.05 * fabs(an)) bad++;
+            }
+            printf("    [领地头梯度] 领地头全部 %d 个参数，最大绝对偏差 %.2e, 超差 %d\n",
+                   checked, worst, bad);
+            CHECK(bad == 0, "领地头梯度与有限差分一致 (%d/%d 超差)", bad, checked);
+            CHECK(worst < 5e-3, "领地头的最大绝对偏差 ~0 (%.2e)", worst);
+        }
+        /* 干路上的参数（conv 权重）要受 ReLU 折点影响，有限差分会有个别点不准，
+           所以这里只查整体相关性（这也验证领地梯度确实回传到了主干）。 */
+        {
+            const float h = 1e-3f;
+            int checked = 0, bad = 0;
+            double sum_an = 0, sum_num = 0, sum_a2 = 0, sum_n2 = 0, sum_an2 = 0;
+            for (int t = 0; t < 60; t++) {
+                const int i = (int)rng_below(&rng, (uint32_t)net.off_pw);   /* 只抽卷积层 */
+                const float w0 = net.params[i];
+                net.params[i] = w0 + h;
+                const float lp = example_loss_ex(&net, &c, x, pi, z, own, OWN_W, NULL);
+                net.params[i] = w0 - h;
+                const float lm = example_loss_ex(&net, &c, x, pi, z, own, OWN_W, NULL);
+                net.params[i] = w0;
+                const double num = (double)(lp - lm) / (2.0 * h);
+                const double an = grad[i];
+                checked++;
+                if (fabs(num - an) > 2e-2 + 0.10 * fabs(an)) bad++;
                 sum_an += an; sum_num += num; sum_a2 += an * an; sum_n2 += num * num; sum_an2 += an * num;
             }
             const double denom = sqrt((sum_a2 - sum_an * sum_an / checked) * (sum_n2 - sum_num * sum_num / checked));
             const double corr = denom > 0 ? (sum_an2 - sum_an * sum_num / checked) / denom : 0.0;
-            printf("    [领地头梯度] 最大绝对偏差 %.2e, 超差 %d/%d\n", worst, bad, checked);
-            CHECK(bad == 0, "领地头/全身权重梯度与有限差分一致 (%d/%d 超差)", bad, checked);
-            CHECK(worst < 1e-2, "领地损失的最大绝对偏差接近 0 (%.2e)", worst);
-            CHECK(corr > 0.99, "领地头梯度相关性 = %.5f", corr);
+            CHECK(bad == 0, "主干卷积权重梯度与有限差分一致 (%d/%d 超差)", bad, checked);
+            CHECK(corr > 0.99, "主干梯度相关性（含领地项） = %.5f", corr);
+        }
+        /* 领地梯度确实进了主干：开/关领地损失时 conv2 的梯度必须不同 */
+        {
+            float *g0 = (float *)calloc((size_t)net.n_params, sizeof(float));
+            net_zero_grad(&net, g0);
+            net_forward(&net, &c, x, pol, &v);
+            net_backward_ex(&net, &c, pi, z, NULL, 0.0f, g0, &l1, &l2, &l3);
+            double d = 0;
+            for (int i = 0; i < net.len_c2w; i++)
+                d += fabs(grad[net.off_c2w + i] - g0[net.off_c2w + i]);
+            CHECK(d > 0.0, "领地 BCE 的梯度回传到了主干 conv2 (%.3e)", d);
+            free(g0);
         }
         /* 没有领地目标时（own = NULL）等价于关闭 */
         net_zero_grad(&net, grad);
@@ -417,22 +447,17 @@ int test_net_run(void) {
               "值损失 = -log p(z 所在桶) (%.6f)", (double)l2);
         CHECK(l3 == 0.0f, "没有领地头时领地损失为 0");
 
-        /* 有限差分 */
+        /* 有限差分（值分布头）：logits = W·ha + b 是线性的、损失是 softmax 交叉熵，
+           全程光滑，所以要求"最大偏差 ~0"；抽头里的 60 个参数逐个核对。 */
         net_zero_grad(&net, grad);
         example_loss_ex(&net, &c, x, pi, 1.0f, NULL, 0.0f, grad);
         {
             const float h = 1e-2f;
             int checked = 0, bad = 0;
             double worst = 0.0;
-            double sum_an = 0, sum_num = 0, sum_a2 = 0, sum_n2 = 0, sum_an2 = 0;
-            for (int t = 0; t < 120; t++) {
-                int i;
-                if (t < 30) {   /* 先专抽值分布头 */
-                    const int base = net.off_vfc2w;
-                    i = base + (int)rng_below(&rng, (uint32_t)(net.len_vfc2w + net.len_vfc2b));
-                } else {
-                    i = (int)rng_below(&rng, (uint32_t)net.n_params);
-                }
+            const int lo = net.off_vfc2w, hi = net.off_vfc2b + net.len_vfc2b;
+            for (int t = 0; t < 60; t++) {
+                const int i = lo + (int)rng_below(&rng, (uint32_t)(hi - lo));
                 const float w0 = net.params[i];
                 net.params[i] = w0 + h;
                 const float lp = example_loss_ex(&net, &c, x, pi, 1.0f, NULL, 0.0f, NULL);
@@ -442,16 +467,36 @@ int test_net_run(void) {
                 const double num = (double)(lp - lm) / (2.0 * h);
                 const double an = grad[i];
                 checked++;
-                const double err = fabs(num - an);
-                if (err > worst) worst = err;
-                if (err > 2e-3 + 0.05 * fabs(an)) bad++;
+                if (fabs(num - an) > worst) worst = fabs(num - an);
+                if (fabs(num - an) > 2e-3 + 0.05 * fabs(an)) bad++;
+            }
+            printf("    [值分布头梯度] 最大绝对偏差 %.2e, 超差 %d/%d\n", worst, bad, checked);
+            CHECK(bad == 0, "值分布头梯度与有限差分一致 (%d/%d 超差)", bad, checked);
+            CHECK(worst < 5e-3, "值分布头的最大绝对偏差 ~0 (%.2e)", worst);
+        }
+        /* 干路（conv）受 ReLU 折点影响：只查整体相关性 */
+        {
+            const float h = 1e-3f;
+            int checked = 0, bad = 0;
+            double sum_an = 0, sum_num = 0, sum_a2 = 0, sum_n2 = 0, sum_an2 = 0;
+            for (int t = 0; t < 60; t++) {
+                const int i = (int)rng_below(&rng, (uint32_t)net.off_pw);
+                const float w0 = net.params[i];
+                net.params[i] = w0 + h;
+                const float lp = example_loss_ex(&net, &c, x, pi, 1.0f, NULL, 0.0f, NULL);
+                net.params[i] = w0 - h;
+                const float lm = example_loss_ex(&net, &c, x, pi, 1.0f, NULL, 0.0f, NULL);
+                net.params[i] = w0;
+                const double num = (double)(lp - lm) / (2.0 * h);
+                const double an = grad[i];
+                checked++;
+                if (fabs(num - an) > 2e-2 + 0.10 * fabs(an)) bad++;
                 sum_an += an; sum_num += num; sum_a2 += an * an; sum_n2 += num * num; sum_an2 += an * num;
             }
             const double denom = sqrt((sum_a2 - sum_an * sum_an / checked) * (sum_n2 - sum_num * sum_num / checked));
             const double corr = denom > 0 ? (sum_an2 - sum_an * sum_num / checked) / denom : 0.0;
-            printf("    [值分布头梯度] 最大绝对偏差 %.2e, 超差 %d/%d\n", worst, bad, checked);
-            CHECK(bad == 0, "值分布头/全身权重梯度与有限差分一致 (%d/%d 超差)", bad, checked);
-            CHECK(corr > 0.99, "值分布头梯度相关性 = %.5f", corr);
+            CHECK(bad == 0, "值分布主干卷积梯度与有限差分一致 (%d/%d 超差)", bad, checked);
+            CHECK(corr > 0.99, "值分布主干梯度相关性 = %.5f", corr);
         }
         free(grad); free(x); free(pi);
         net_cache_free(&c); net_free(&net);
@@ -486,6 +531,65 @@ int test_net_run(void) {
         CHECK(v > v0 + 0.2f, "值分布期望朝 +1 移动 (%.3f -> %.3f)", (double)v0, (double)v);
         CHECK(loss1 < loss0 * 0.5f, "值分布交叉熵下降 (%.3f -> %.3f)", (double)loss0, (double)loss1);
         free(grad); free(m); free(vv); free(x); free(pi);
+        net_cache_free(&c); net_free(&net);
+    }
+
+    /* ================= 残差块 + 两个新头一起用（回归：头部 1x1 的输入）================= */
+    {
+        const int size = 5, P = NET_FEATURE_PLANES, C = 4, H = 8, BLOCKS = 2;
+        Net net; NetCache c;
+        net_init_full(&net, size, P, C, H, BLOCKS, 1, 1, 77);
+        CHECK(net.blocks == BLOCKS && net.own_head == 1 && net.vdist == 1,
+              "残差块 + 领地头 + 值分布可以同时存在");
+        /* 块零初始化会让块的梯度退化成 0，这里随机化以便校验数学 */
+        Rng rw; rng_seed(&rw, 4242);
+        for (int i = 0; i < net.len_bw; i++) net.params[net.off_bw + i] = (float)(rng_normal(&rw) * 0.08);
+        for (int i = 0; i < net.len_ow; i++) net.params[net.off_ow + i] = (float)(rng_normal(&rw) * 0.3);
+        net_cache_init(&net, &c);
+        const int nn = size * size, NP = nn + 1;
+
+        Rng rng; rng_seed(&rng, 555);
+        float *x = (float *)calloc((size_t)P * nn, sizeof(float));
+        float *pi = (float *)calloc((size_t)NP, sizeof(float));
+        float *own = (float *)calloc((size_t)nn, sizeof(float));
+        for (int i = 0; i < P * nn; i++) x[i] = rng_double(&rng) < 0.4 ? 1.0f : 0.0f;
+        double s = 0;
+        for (int i = 0; i < NP; i++) { pi[i] = (float)(rng_double(&rng) + 0.05); s += pi[i]; }
+        for (int i = 0; i < NP; i++) pi[i] = (float)(pi[i] / s);
+        for (int i = 0; i < nn; i++) own[i] = (i % 3 == 0) ? 1.0f : (i % 3 == 1) ? 0.0f : 0.5f;
+
+        float *grad = (float *)calloc((size_t)net.n_params, sizeof(float));
+        net_zero_grad(&net, grad);
+        example_loss_ex(&net, &c, x, pi, 1.0f, own, 0.15f, grad);
+        /* 三个头部的 1x1 卷积权重：前向输入是"最后一块的输出"，
+           反向也必须用同一个缓存（否则有残差块时这 17 个参数的梯度全错） */
+        struct { const char *name; int lo, hi; } segs[3];
+        segs[0].name = "策略头 1x1"; segs[0].lo = net.off_pw; segs[0].hi = net.off_pw + net.len_pw;
+        segs[1].name = "价值头 1x1"; segs[1].lo = net.off_vw; segs[1].hi = net.off_vw + net.len_vw;
+        segs[2].name = "领地头 1x1"; segs[2].lo = net.off_ow; segs[2].hi = net.off_ob + net.len_ob;
+        const float h = 1e-3f;
+        for (int k = 0; k < 3; k++) {
+            double worst = 0.0;
+            int bad = 0, n = 0;
+            for (int i = segs[k].lo; i < segs[k].hi; i++) {
+                const float w0 = net.params[i];
+                net.params[i] = w0 + h;
+                const float lp = example_loss_ex(&net, &c, x, pi, 1.0f, own, 0.15f, NULL);
+                net.params[i] = w0 - h;
+                const float lm = example_loss_ex(&net, &c, x, pi, 1.0f, own, 0.15f, NULL);
+                net.params[i] = w0;
+                const double num = (double)(lp - lm) / (2.0 * h);
+                const double an = grad[i];
+                n++;
+                if (fabs(num - an) > worst) worst = fabs(num - an);
+                if (fabs(num - an) > 2e-3 + 0.05 * fabs(an)) bad++;
+            }
+            printf("    [残差块头部] %s：%d 个参数，最大偏差 %.2e，超差 %d\n",
+                   segs[k].name, n, worst, bad);
+            CHECK(bad == 0, "%s 的梯度在有残差块时也正确 (%d/%d 超差)", segs[k].name, bad, n);
+            CHECK(worst < 5e-3, "%s 最大偏差 ~0 (%.2e)", segs[k].name, worst);
+        }
+        free(grad); free(x); free(pi); free(own);
         net_cache_free(&c); net_free(&net);
     }
 

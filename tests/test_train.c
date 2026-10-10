@@ -85,5 +85,52 @@ int test_train_run(void) {
         CHECK(train_winrate_ci(0.5, 0) == 0.0, "0 局时 CI 为 0");
         CHECK(train_winrate_ci(2.0, 10) == train_winrate_ci(1.0, 10), "胜率夹到 [0,1]");
     }
+
+    /* 7) 第 ⑤ 步：领地标签的登记 / 取用（按棋局号索引，一盘棋只存一份） */
+    {
+        TrainConfig c = base_cfg();
+        c.buffer_cap = 64;
+        c.channels = 4;
+        c.vhidden = 8;
+        c.own_weight = 0.15f;               /* > 0 => 网络带领地头 */
+        c.vdist = 1;
+        Trainer t;
+        CHECK(trainer_init(&t, &c, 7) == 0, "trainer_init（领地头 + 值分布）");
+        CHECK(t.net.own_head == 1 && t.net.vdist == 1, "网络确实建了领地头和值分布头");
+        CHECK(t.own_tab != NULL && t.own_slots > 0, "领地标签表已分配（%d 槽）", t.own_slots);
+        ExampleBatch b;
+        CHECK(batch_init(&b, 4, t.xlen, t.pilen) == 0, "batch_init");
+        b.n = 2;
+        memset(b.X, 0, (size_t)2 * (size_t)t.xlen);
+        memset(b.PI, 0, (size_t)2 * (size_t)t.pilen * sizeof(float));
+        b.Z[0] = 1.0f; b.Z[1] = -1.0f;
+        int8_t own[81];
+        for (int i = 0; i < 81; i++) own[i] = (i % 3 == 0) ? 1 : (i % 3 == 1 ? -1 : 0);
+        trainer_push_game(&t, &b, own);
+        CHECK(t.count == 2, "两个样本都进了回放缓冲");
+        const int gid = t.bown[0];
+        CHECK(gid > 0 && t.bown[1] == gid, "同一盘棋的样本共享棋局号");
+        {
+            const int8_t *lab = trainer_own_labels(&t, gid);
+            CHECK(lab != NULL && memcmp(lab, own, 81) == 0, "领地标签按棋局号取回且完全一致");
+        }
+        CHECK(t.bwhite[0] == 0 && t.bwhite[1] == 1, "样本 0 轮到黑、样本 1 轮到白");
+        CHECK(trainer_own_labels(&t, gid + 12345) == NULL, "不存在的棋局号返回 NULL");
+        batch_free(&b);
+        trainer_free(&t);
+    }
+
+    /* 8) 关闭额外头时不分配标签表（默认行为完全不变） */
+    {
+        TrainConfig c = base_cfg();
+        c.buffer_cap = 64;
+        c.channels = 4;
+        c.vhidden = 8;
+        Trainer t;
+        CHECK(trainer_init(&t, &c, 8) == 0, "trainer_init（默认配置）");
+        CHECK(t.net.own_head == 0 && t.net.vdist == 0 && t.own_tab == NULL,
+              "默认不建额外头、不分配标签表");
+        trainer_free(&t);
+    }
     return 0;
 }
