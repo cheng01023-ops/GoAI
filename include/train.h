@@ -33,6 +33,9 @@ typedef struct {
     int    pass_min_move;
     int    threads;          /* self-play threads (0 = auto)        */
     int    augment;          /* 8-fold symmetry data augmentation   */
+    /* ---- 第 ⑤ 步：辅助目标 ---- */
+    float  own_weight;       /* 领地 BCE 权重（>0 时网络带领地头，0 = 关闭）*/
+    int    vdist;            /* 1 = 值头改成 NET_VALUE_BUCKETS 桶分布      */
     int    forever;          /* keep iterating until stopped        */
     int    resume;           /* load --resume weights first         */
     const char *resume_path;
@@ -74,9 +77,19 @@ typedef struct {
     volatile int games_done;   /* self-play games finished (any thread) */
     int      xlen;           /* planes * nn (bytes, features are 0/1)    */
     int      pilen;          /* nn + 1                                   */
+    int      nn;             /* size * size                              */
     uint8_t *bx;
     float   *bpi;
     float   *bz;
+    int32_t *bown;           /* 每个样本所属棋局号（-1 = 无归属标签）      */
+    uint8_t *bwhite;         /* 每个样本是否轮到白棋                     */
+    /* 终局归属只按"一盘棋一份"存（81 字节/q，省内存），样本里只记棋局号；
+       棋局号取模映射到槽位，槽位被新棋局覆盖后旧样本会自动退回"无标签"。 */
+    int8_t  *own_tab;        /* own_slots * nn，黑方视角归属             */
+    int32_t *own_gid;        /* 槽位对应棋局号（-1 = 空）                 */
+    int      own_slots;
+    int32_t  next_gid;
+    long     own_miss;       /* 采样时标签已失效的样本数（统计用）          */
     int      cap, count, head;
     Rng      rng;
     pthread_mutex_t buf_lock;
@@ -94,15 +107,21 @@ double goai_now(void);
 void  train_config_default(TrainConfig *cfg, int size);
 int   trainer_init(Trainer *t, const TrainConfig *cfg, uint64_t seed);
 void  trainer_free(Trainer *t);
-void  buffer_push(Trainer *t, const uint8_t *x, const float *pi, float z);
+void  buffer_push(Trainer *t, const uint8_t *x, const float *pi, float z, int gid, int white);
+/* 提交一盘棋：登记终局归属（own_black = nn 个黑方视角 {-1,0,+1}）+ 推入所有样本 */
+void  trainer_push_game(Trainer *t, const ExampleBatch *batch, const int8_t *own_black);
+/* 取某盘棋的终局归属表（黑方视角）；已被覆盖时返回 NULL */
+const int8_t *trainer_own_labels(const Trainer *t, int gid);
 int   train_gradient_steps(Trainer *t, const TrainConfig *cfg, int steps,
-                           float *policy_loss, float *value_loss);
+                           float *policy_loss, float *value_loss, float *own_loss);
 /* 学习率计划：绝对轮次每 lr_decay_every 轮乘一次 lr_decay_factor，不低于 lr_min */
 float train_lr_at_iter(const TrainConfig *cfg, int iter);
 /* 胜率的 95% 置信区间半宽（用于判断"进步是否在噪声内"） */
 double train_winrate_ci(double p, int games);
 
-int   selfplay_game(const TrainConfig *cfg, Search *s, Rng *rng, Sgf *sgf, ExampleBatch *out);
+/* own_out（可空）回填终局归属（nn 个，黑方视角 {-1,0,+1}）*/
+int   selfplay_game(const TrainConfig *cfg, Search *s, Rng *rng, Sgf *sgf, ExampleBatch *out,
+                    int8_t *own_out);
 int   batch_init(ExampleBatch *b, int cap, int xlen, int pilen);
 void  batch_free(ExampleBatch *b);
 int   eval_match(Search *s, const TrainConfig *cfg, EngineSpec a, EngineSpec b,

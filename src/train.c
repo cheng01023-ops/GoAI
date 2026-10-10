@@ -133,6 +133,8 @@ void train_config_default(TrainConfig *cfg, int size) {
     cfg->eval_every = 3;
     cfg->plot = 1;
     cfg->augment = 1;
+    cfg->own_weight = 0.0f;      /* 领地辅助头默认关闭；实验里用 --own-weight 0.15 打开 */
+    cfg->vdist = 0;              /* 值分布头默认关闭；用 --vdist 1 打开 */
     cfg->threads = 0;   /* auto: one per CPU, capped at 8 */
     cfg->seed = 20241001ULL;
     cfg->out_dir = "runs";
@@ -141,11 +143,13 @@ void train_config_default(TrainConfig *cfg, int size) {
 int trainer_init(Trainer *t, const TrainConfig *cfg, uint64_t seed) {
     memset(t, 0, sizeof(*t));
     t->lr = cfg->lr;
-    net_init_ex(&t->net, cfg->size, cfg->planes, cfg->channels, cfg->vhidden, cfg->blocks, seed);
+    net_init_full(&t->net, cfg->size, cfg->planes, cfg->channels, cfg->vhidden, cfg->blocks,
+                  cfg->own_weight > 0.0f, cfg->vdist, seed);
     net_cache_init(&t->net, &t->cache);
     const size_t np = (size_t)t->net.n_params;
     t->xlen = cfg->planes * cfg->size * cfg->size;
     t->pilen = cfg->size * cfg->size + 1;
+    t->nn = cfg->size * cfg->size;
     t->cap = cfg->buffer_cap;
     t->grad = (float *)calloc(np, sizeof(float));
     t->adam_m = (float *)calloc(np, sizeof(float));
@@ -157,6 +161,23 @@ int trainer_init(Trainer *t, const TrainConfig *cfg, uint64_t seed) {
         fprintf(stderr, "trainer_init: out of memory\n");
         return 1;
     }
+    /* 领地标签表：只有带领地头时才分配。
+       槽位数取 buffer_cap/4（每盘棋平均远长于 4 手），槽位被覆盖的样本会
+       自动退回"无标签"，不会读到错的地盘。 */
+    if (t->net.own_head) {
+        t->own_slots = cfg->buffer_cap / 4 + 64;
+        t->own_tab = (int8_t *)calloc((size_t)t->own_slots * (size_t)t->nn, 1);
+        t->own_gid = (int32_t *)malloc((size_t)t->own_slots * sizeof(int32_t));
+        t->bown = (int32_t *)malloc((size_t)t->cap * sizeof(int32_t));
+        t->bwhite = (uint8_t *)calloc((size_t)t->cap, 1);
+        if (!t->own_tab || !t->own_gid || !t->bown || !t->bwhite) {
+            fprintf(stderr, "trainer_init: out of memory (own labels)\n");
+            return 1;
+        }
+        for (int i = 0; i < t->own_slots; i++) t->own_gid[i] = -1;
+        for (int i = 0; i < t->cap; i++) t->bown[i] = -1;
+        t->next_gid = 1;
+    }
     rng_seed(&t->rng, seed ^ 0x5DEECE66DULL);
     pthread_mutex_init(&t->buf_lock, NULL);
     return 0;
@@ -167,17 +188,45 @@ void trainer_free(Trainer *t) {
     net_free(&t->net);
     free(t->grad); free(t->adam_m); free(t->adam_v);
     free(t->bx); free(t->bpi); free(t->bz);
+    free(t->bown); free(t->bwhite); free(t->own_tab); free(t->own_gid);
     pthread_mutex_destroy(&t->buf_lock);
     memset(t, 0, sizeof(*t));
 }
 
-void buffer_push(Trainer *t, const uint8_t *x, const float *pi, float z) {
+void buffer_push(Trainer *t, const uint8_t *x, const float *pi, float z, int gid, int white) {
     const int idx = t->head;
     memcpy(t->bx + (size_t)idx * t->xlen, x, (size_t)t->xlen);
     memcpy(t->bpi + (size_t)idx * t->pilen, pi, (size_t)t->pilen * sizeof(float));
     t->bz[idx] = z;
+    if (t->bown) t->bown[idx] = gid;
+    if (t->bwhite) t->bwhite[idx] = (uint8_t)(white ? 1 : 0);
     t->head = (idx + 1) % t->cap;
     if (t->count < t->cap) t->count++;
+}
+
+/* 提交一盘棋：先登记终局归属（拿到棋局号），再用同一个棋局号推入所有样本。
+   整个过程只加一次锁，所以样本和标签不会错位。样本 i 的行棋方：0 手黑、1 手白… */
+void trainer_push_game(Trainer *t, const ExampleBatch *batch, const int8_t *own_black) {
+    pthread_mutex_lock(&t->buf_lock);
+    int gid = -1;
+    if (t->own_tab && own_black) {
+        gid = t->next_gid++;
+        const int slot = gid % t->own_slots;
+        memcpy(t->own_tab + (size_t)slot * (size_t)t->nn, own_black, (size_t)t->nn);
+        t->own_gid[slot] = gid;
+    }
+    for (int i = 0; i < batch->n; i++)
+        buffer_push(t, batch->X + (size_t)i * t->xlen,
+                       batch->PI + (size_t)i * batch->pilen, batch->Z[i],
+                       gid, (i % 2) == 1);
+    pthread_mutex_unlock(&t->buf_lock);
+}
+
+const int8_t *trainer_own_labels(const Trainer *t, int gid) {
+    if (!t->own_tab || gid <= 0) return NULL;
+    const int slot = gid % t->own_slots;
+    if (t->own_gid[slot] != gid) return NULL;    /* 槽位已被更晚的棋局覆盖 */
+    return t->own_tab + (size_t)slot * (size_t)t->nn;
 }
 
 /* ------------------------------------------------------------------ SGF */
@@ -248,8 +297,10 @@ void batch_free(ExampleBatch *b) {
     memset(b, 0, sizeof(*b));
 }
 
-/* play one self-play game and fill `out` with (features, policy target, z) */
-int selfplay_game(const TrainConfig *cfg, Search *s, Rng *rng, Sgf *sgf, ExampleBatch *out) {
+/* play one self-play game and fill `out` with (features, policy target, z)；
+   own_out（可空）回填终局归属（黑方视角，nn 个 {-1,0,+1}），给领地辅助头当标签 */
+int selfplay_game(const TrainConfig *cfg, Search *s, Rng *rng, Sgf *sgf, ExampleBatch *out,
+                  int8_t *own_out) {
     (void)rng;
     out->n = 0;
     float xbuf[BOARD_MAX_POINTS * 8];
@@ -271,6 +322,7 @@ int selfplay_game(const TrainConfig *cfg, Search *s, Rng *rng, Sgf *sgf, Example
         s->pending_advance = cfg->reuse ? move : -1;   /* 树复用开关 */
     }
     const int winner = board_winner(&b, cfg->komi);
+    if (own_out) board_ownership(&b, own_out);
     if (sgf) sgf_result(sgf, winner);
     for (int i = 0; i < out->n; i++) {
         const int player = (i % 2 == 0) ? 1 : 2;
@@ -307,14 +359,11 @@ static void *selfplay_thread(void *arg) {
             snprintf(cmt, sizeof(cmt), "GoAI self-play iteration %d game %d", j->iter, gid + 1);
             sgf = sgf_open(path, cfg->size, cfg->komi, cmt);
         }
-        const int n = selfplay_game(cfg, &j->search, &j->rng, sgf, &batch);
+        int8_t own[BOARD_MAX_POINTS];
+        const int n = selfplay_game(cfg, &j->search, &j->rng, sgf, &batch, own);
         if (sgf) sgf_close(sgf);
         if (n > 0) {
-            pthread_mutex_lock(&t->buf_lock);
-            for (int i = 0; i < batch.n; i++)
-                buffer_push(t, batch.X + (size_t)i * t->xlen,
-                               batch.PI + (size_t)i * t->pilen, batch.Z[i]);
-            pthread_mutex_unlock(&t->buf_lock);
+            trainer_push_game(t, &batch, own);
             j->positions += batch.n;
         }
         __atomic_add_fetch(&t->games_done, 1, __ATOMIC_RELAXED);
@@ -347,16 +396,26 @@ float train_lr_at_iter(const TrainConfig *cfg, int iter) {
     return lr;
 }
 
+/* 黑方视角归属 {-1,0,+1} -> 当前行棋方视角目标 {0,0.5,1} */
+static float own_target_value(int8_t black_view, int white_to_move) {
+    if (black_view > 0) return white_to_move ? 0.0f : 1.0f;
+    if (black_view < 0) return white_to_move ? 1.0f : 0.0f;
+    return 0.5f;
+}
+
 int train_gradient_steps(Trainer *t, const TrainConfig *cfg, int steps,
-                         float *policy_loss, float *value_loss) {
+                         float *policy_loss, float *value_loss, float *own_loss) {
     if (t->count == 0) return 1;
-    double pl = 0, vl = 0;
+    double pl = 0, vl = 0, ol = 0;
+    const int nn0 = t->nn;
+    const int use_own = (t->net.own_head && t->own_tab) ? 1 : 0;
     float *x = (float *)malloc((size_t)t->xlen * sizeof(float));
     float *pi = (float *)malloc((size_t)t->pilen * sizeof(float));
-    if (!x || !pi) { free(x); free(pi); return 1; }
+    float *own_t = use_own ? (float *)malloc((size_t)nn0 * sizeof(float)) : NULL;
+    if (!x || !pi || (use_own && !own_t)) { free(x); free(pi); free(own_t); return 1; }
     for (int s = 0; s < steps; s++) {
         net_zero_grad(&t->net, t->grad);
-        double bpl = 0, bvl = 0;
+        double bpl = 0, bvl = 0, bol = 0;
         for (int k = 0; k < cfg->batch_size; k++) {
             const int idx = (int)rng_below(&t->rng, (uint32_t)t->count);
             const uint8_t *src = t->bx + (size_t)idx * t->xlen;
@@ -382,11 +441,34 @@ int train_gradient_steps(Trainer *t, const TrainConfig *cfg, int steps,
                 for (int i = 0; i < t->xlen; i++) x[i] = (float)src[i];
                 memcpy(pi, pi_src, (size_t)t->pilen * sizeof(float));
             }
-            float l1 = 0, l2 = 0;
+            /* 领地目标：按棋局号取那盘棋的终局归属，再换成"当前行棋方视角"。
+               数据增强时归属图要跟特征/策略做同一个对称变换 ✓ */
+            const float *own_ptr = NULL;
+            if (use_own && cfg->own_weight != 0.0f) {
+                const int8_t *ob = trainer_own_labels(t, t->bown ? t->bown[idx] : -1);
+                if (ob) {
+                    const int white = t->bwhite ? t->bwhite[idx] : 0;
+                    if (cfg->augment) {
+                        for (int y = 0; y < n; y++) for (int xx = 0; xx < n; xx++) {
+                            int ax, ay;
+                            transform_xy(tt, n, xx, y, &ax, &ay);
+                            own_t[ay * n + ax] = own_target_value(ob[y * n + xx], white);
+                        }
+                    } else {
+                        for (int i = 0; i < nn; i++) own_t[i] = own_target_value(ob[i], white);
+                    }
+                    own_ptr = own_t;
+                } else {
+                    t->own_miss++;      /* 标签已被新棋局覆盖：这条样本不加领地损失 */
+                }
+            }
+            float l1 = 0, l2 = 0, l3 = 0;
             net_forward(&t->net, &t->cache, x, NULL, NULL);
-            net_backward(&t->net, &t->cache, pi, t->bz[idx], t->grad, &l1, &l2);
+            net_backward_ex(&t->net, &t->cache, pi, t->bz[idx], own_ptr, cfg->own_weight,
+                            t->grad, &l1, &l2, &l3);
             bpl += l1;
             bvl += l2;
+            bol += l3;
         }
         const float scale = 1.0f / (float)cfg->batch_size;
         for (int i = 0; i < t->net.n_params; i++) t->grad[i] *= scale;
@@ -394,10 +476,12 @@ int train_gradient_steps(Trainer *t, const TrainConfig *cfg, int steps,
                  t->lr, cfg->weight_decay, 1.0f);
         pl += bpl * scale;
         vl += bvl * scale;
+        ol += bol * scale;
     }
-    free(x); free(pi);
+    free(x); free(pi); free(own_t);
     if (policy_loss) *policy_loss = (float)(pl / steps);
     if (value_loss)  *value_loss  = (float)(vl / steps);
+    if (own_loss)    *own_loss    = (float)(ol / steps);
     return 0;
 }
 
@@ -523,28 +607,32 @@ int train_run(const TrainConfig *cfgin) {
     int  start_iter = 1;
     long total_games = 0;
     if (cfg.resume && cfg.resume_path) {
-        if (cfg.blocks > 0) {
-            /* 带残差块时不能直接 net_load（那会把网络重建成文件里的结构），
-               而是先读进临时网络，再把形状相同的权重搬进已经建好的残差网络。 */
-            Net old;
-            memset(&old, 0, sizeof(old));
-            if (net_load(&old, cfg.resume_path)) {
-                if (old.blocks != cfg.blocks) {
-                    net_copy_shared(&t.net, &old);
-                    printf("继续训练：已载入 %s（残差块 %d -> %d，共享权重已迁移）\n",
-                           cfg.resume_path, old.blocks, cfg.blocks);
-                } else {
-                    memcpy(t.net.params, old.params, (size_t)t.net.n_params * sizeof(float));
-                    printf("继续训练：已载入 %s\n", cfg.resume_path);
-                }
-                net_free(&old);
-            } else {
-                printf("继续训练：%s 不存在，将从随机初始化开始\n", cfg.resume_path);
-            }
-        } else if (net_load(&t.net, cfg.resume_path)) {
-            printf("继续训练：已载入 %s\n", cfg.resume_path);
-        } else {
+        /* 先读进临时网络：文件的结构可能和本次训练要建的结构不同
+           （加残差块、加领地头、值头从标量换成分布），这时把形状相同的权重搬过去，
+           新头/新块保持 net_init_full 的初始化。 */
+        Net old;
+        memset(&old, 0, sizeof(old));
+        if (!net_load(&old, cfg.resume_path)) {
             printf("继续训练：%s 不存在，将从随机初始化开始\n", cfg.resume_path);
+        } else if (old.size != t.net.size || old.planes != t.net.planes ||
+                   old.channels != t.net.channels || old.vhidden != t.net.vhidden) {
+            printf("继续训练：%s 的规格(%d路/%d通道)与当前训练不一致，忽略这次加载\n",
+                   cfg.resume_path, old.size, old.channels);
+            net_free(&old);
+        } else {
+            if (old.blocks != t.net.blocks || old.own_head != t.net.own_head ||
+                old.vdist != t.net.vdist) {
+                char oa[64], na[64];
+                net_arch_str(&old, oa, sizeof(oa));
+                net_arch_str(&t.net, na, sizeof(na));
+                net_copy_shared(&t.net, &old);
+                printf("继续训练：已载入 %s（结构 %s -> %s，共享权重已迁移，新头随机初始化）\n",
+                       cfg.resume_path, oa, na);
+            } else {
+                memcpy(t.net.params, old.params, (size_t)t.net.n_params * sizeof(float));
+                printf("继续训练：已载入 %s\n", cfg.resume_path);
+            }
+            net_free(&old);
         }
     }
     {
@@ -573,13 +661,20 @@ int train_run(const TrainConfig *cfgin) {
     FILE *csv = fopen(path, "a");
     if (csv && !log_has_header) {
         fprintf(csv, "iteration,games,positions,policy_loss,value_loss,param_norm,"
-                     "winrate_vs_random,gate_winrate,elapsed_s,lr,anchor_winrate,selfplay_s,train_s,eval_s\n");
+                     "winrate_vs_random,gate_winrate,elapsed_s,lr,anchor_winrate,selfplay_s,train_s,eval_s,"
+                     "own_loss\n");
         fflush(csv);
     }
 
+    char arch[96];
+    net_arch_str(&t.net, arch, sizeof(arch));
     printf("=== GoAI 持续自我迭代训练 ===\n");
-    printf("  棋盘 %dx%d · %d 通道 · 每步 %d 次模拟 · 每轮 %d 局 · %d 线程\n",
-           cfg.size, cfg.size, cfg.channels, cfg.sims, cfg.games_per_iter, cfg.threads);
+    printf("  棋盘 %dx%d · %s · 每步 %d 次模拟 · 每轮 %d 局 · %d 线程\n",
+           cfg.size, cfg.size, arch, cfg.sims, cfg.games_per_iter, cfg.threads);
+    if (t.net.own_head)
+        printf("  辅助头：领地 BCE 权重 %.3f（数据增强会同步变换归属图）\n", cfg.own_weight);
+    if (t.net.vdist)
+        printf("  值头：%d 桶分布（交叉熵；这个数字与以前的 MSE 不可比）\n", NET_VALUE_BUCKETS);
     printf("  输出目录 %s/  （latest.bin / best.bin / train_log.csv / status.txt）\n",
            cfg.out_dir);
     if (cfg.lr_decay_every > 0)
@@ -640,16 +735,11 @@ int train_run(const TrainConfig *cfgin) {
                     snprintf(cmt, sizeof(cmt), "GoAI self-play iteration %d game %d", iter, g + 1);
                     sgf = sgf_open(path, cfg.size, cfg.komi, cmt);
                 }
-                const int n = selfplay_game(&cfg, &s, &t.rng, sgf, &batch);
+                int8_t own[BOARD_MAX_POINTS];
+                const int n = selfplay_game(&cfg, &s, &t.rng, sgf, &batch, own);
                 if (sgf) sgf_close(sgf);
                 if (n < 0) { fprintf(stderr, "self-play failed\n"); return 1; }
-                if (n > 0) {
-                    pthread_mutex_lock(&t.buf_lock);
-                    for (int i = 0; i < batch.n; i++)
-                        buffer_push(&t, batch.X + (size_t)i * t.xlen,
-                                       batch.PI + (size_t)i * t.pilen, batch.Z[i]);
-                    pthread_mutex_unlock(&t.buf_lock);
-                }
+                if (n > 0) trainer_push_game(&t, &batch, own);
                 positions += n;
                 __atomic_add_fetch(&t.games_done, 1, __ATOMIC_RELAXED);
             }
@@ -691,11 +781,11 @@ int train_run(const TrainConfig *cfgin) {
             break;
         }
 
-        float pl = 0, vl = 0;
+        float pl = 0, vl = 0, ol = 0;
         const double t_sp = goai_now() - t_iter0;   /* 阶段 1：自对弈 */
         const double t_tr0 = goai_now();
         t.lr = train_lr_at_iter(&cfg, iter);      /* 学习率衰减计划 */
-        train_gradient_steps(&t, &cfg, cfg.train_steps, &pl, &vl);
+        train_gradient_steps(&t, &cfg, cfg.train_steps, &pl, &vl, &ol);
 
         const double t_tr = goai_now() - t_tr0;     /* 阶段 2：梯度训练 */
         const double t_ev0 = goai_now();
@@ -779,6 +869,7 @@ int train_run(const TrainConfig *cfgin) {
                    t_sp, 100.0 * t_sp / el, t_tr, 100.0 * t_tr / el, t_ev, 100.0 * t_ev / el);
         printf("  策略损失 %.4f · 价值损失 %.4f · 对随机胜率 %.1f%%",
                pl, vl, wr * 100.0);
+        if (t.net.own_head) printf(" · 领地损失 %.4f", ol);
         printf(" · 学习率 %.5f", t.lr);
         if (gw >= 0.0) printf(" · 对最佳 %.1f%%", gw * 100.0);
         printf("\n");
@@ -788,9 +879,9 @@ int train_run(const TrainConfig *cfgin) {
         fflush(stdout);
 
         if (csv) {
-            fprintf(csv, "%d,%d,%d,%.5f,%.5f,%.4f,%.4f,%.4f,%.2f,%.6f,%.4f,%.2f,%.2f,%.2f\n",
+            fprintf(csv, "%d,%d,%d,%.5f,%.5f,%.4f,%.4f,%.4f,%.2f,%.6f,%.4f,%.2f,%.2f,%.2f,%.5f\n",
                     iter, cfg.games_per_iter, positions, pl, vl, net_param_norm(&t.net), wr, gw, el,
-                    t.lr, aw, t_sp, t_tr, t_ev);
+                    t.lr, aw, t_sp, t_tr, t_ev, ol);
             fflush(csv);
         }
         {
@@ -817,6 +908,8 @@ int train_run(const TrainConfig *cfgin) {
     const double total_el = goai_now() - t_run0;
     write_status(&cfg, g_stop ? "stopped" : "finished", iter, 0, 0.0, total_el, total_games,
                  NULL, 0.0);
+    if (t.own_miss > 0)
+        printf("注意：有 %ld 个样本的领地标签已被后来的棋局覆盖（未计入领地损失）\n", t.own_miss);
     if (g_stop) printf("\n训练已停止（共 %d 轮 / %ld 局 / %.1f 分钟），权重保存在 %s/latest.bin\n",
                        done_iters, total_games, total_el / 60.0, cfg.out_dir);
     else printf("\n训练结束（共 %d 轮 / %ld 局 / %.1f 分钟）。\n", done_iters, total_games, total_el / 60.0);

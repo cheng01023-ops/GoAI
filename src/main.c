@@ -34,6 +34,9 @@ static void usage(void) {
         "               --rollback 0/1       fall back to best.bin when training degrades (default 1)\n"
         "               --rollback-patience N  consecutive bad gates before rollback (default 3)\n"
         "               --channels N conv channels (default 16 for 9x9)\n"
+        "               --blocks N   residual blocks (default 0 = the original two convs)\n"
+        "               --own-weight X  ownership auxiliary head BCE weight (>0 enables the head)\n"
+        "               --vdist 0/1  value head outputs a 33-bucket distribution (default 0)\n"
         "               --buffer N   replay buffer size (default 30000)\n"
         "               --evalgames N evaluation games per iteration (default 20)\n"
         "               --evalsims N  simulations for evaluation games (default 40)\n"
@@ -121,6 +124,8 @@ int main(int argc, char **argv) {
         cfg.rollback_patience = arg_int(argc, argv, "--rollback-patience", cfg.rollback_patience);
         cfg.channels       = arg_int(argc, argv, "--channels", cfg.channels);
         cfg.blocks         = arg_int(argc, argv, "--blocks", cfg.blocks);
+        cfg.own_weight     = (float)arg_dbl(argc, argv, "--own-weight", cfg.own_weight);
+        cfg.vdist          = arg_int(argc, argv, "--vdist", cfg.vdist);
         cfg.buffer_cap     = arg_int(argc, argv, "--buffer", cfg.buffer_cap);
         cfg.eval_games     = arg_int(argc, argv, "--evalgames", cfg.eval_games);
         cfg.eval_sims      = arg_int(argc, argv, "--evalsims", cfg.eval_sims);
@@ -172,6 +177,8 @@ int main(int argc, char **argv) {
         cfg.sims = arg_int(argc, argv, "--sims", cfg.sims);
         cfg.channels = arg_int(argc, argv, "--channels", cfg.channels);
         cfg.blocks   = arg_int(argc, argv, "--blocks", cfg.blocks);
+        cfg.own_weight = (float)arg_dbl(argc, argv, "--own-weight", cfg.own_weight);
+        cfg.vdist      = arg_int(argc, argv, "--vdist", cfg.vdist);
         return train_bench(&cfg);
     }
 

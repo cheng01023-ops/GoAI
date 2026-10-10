@@ -80,6 +80,76 @@ int test_board_run(void) {
     CHECK(board_point_is_eye_like(&b, P(9, 4, 4), 1) == true, "single point eye detected");
     CHECK(board_point_is_eye_like(&b, P(9, 4, 4), 2) == false, "not an eye for white");
 
+    /* --- 终局归属（第 ⑤ 步的领地标签）--- */
+    {
+        int8_t own[BOARD_MAX_POINTS];
+        /* 空盘：没有棋子 -> 全部中立 */
+        board_init(&b, 9);
+        board_ownership(&b, own);
+        {
+            int nz = 0;
+            for (int p = 0; p < 81; p++) if (own[p] != 0) nz++;
+            CHECK(nz == 0, "empty board has no ownership (%d non-zero)", nz);
+        }
+        /* 一颗黑子独占全盘（与 board_score 一致） */
+        board_init(&b, 9);
+        put(&b, 4, 4, 1);
+        board_ownership(&b, own);
+        {
+            int nb = 0, nw = 0, nn = 0;
+            for (int p = 0; p < 81; p++) { if (own[p] > 0) nb++; else if (own[p] < 0) nw++; else nn++; }
+            CHECK(nb == 81 && nw == 0, "one black stone owns all 81 points (b=%d w=%d)", nb, nw);
+            CHECK(own[P(9, 4, 4)] == 1, "the black stone itself is black-owned");
+            (void)nn;
+        }
+        /* 黑白各一颗：空区同时接触两色 -> 中立；两颗子归各自颜色 */
+        board_init(&b, 9);
+        put(&b, 4, 4, 1); put(&b, 0, 0, 2);
+        board_ownership(&b, own);
+        {
+            int nb = 0, nw = 0, nneutral = 0;
+            for (int p = 0; p < 81; p++) { if (own[p] > 0) nb++; else if (own[p] < 0) nw++; else nneutral++; }
+            CHECK(nb == 1 && nw == 1, "only the two stones are owned (b=%d w=%d)", nb, nw);
+            CHECK(nneutral == 79, "the shared empty region is neutral (%d)", nneutral);
+            CHECK(own[P(9, 0, 0)] == -1, "the white stone is white-owned");
+        }
+        /* 两块被围住的地：左边黑、右边白、中间接触双方 -> 中立
+             X . . . O        X = 黑墙（第 2 列），O = 白墙（第 6 列） */
+        board_init(&b, 9);
+        for (int y = 0; y < 9; y++) { put(&b, 2, y, 1); put(&b, 6, y, 2); }
+        board_ownership(&b, own);
+        CHECK(own[P(9, 0, 4)] == 1, "empty column left of the black wall is black-owned");
+        CHECK(own[P(9, 8, 4)] == -1, "empty column right of the white wall is white-owned");
+        CHECK(own[P(9, 4, 4)] == 0, "the gap between the two walls is neutral");
+        CHECK(own[P(9, 2, 4)] == 1 && own[P(9, 6, 4)] == -1, "wall stones belong to their colour");
+        /* 与 Tromp-Taylor 数子结果一致：黑地 - 白地 == board_score(komi=0) */
+        {
+            int diff = 0;
+            for (int p = 0; p < 81; p++) diff += own[p];
+            CHECK(fabs((double)diff - board_score(&b, 0.0)) < 1e-9,
+                  "ownership sum matches area score (%d vs %.1f)", diff, board_score(&b, 0.0));
+        }
+        /* 随机对局（下满盘面）后也必须一致 */
+        {
+            Rng rng; rng_seed(&rng, 777);
+            Board g; board_init(&g, 9);
+            for (int i = 0; i < 200 && g.passes < 2; i++) {
+                const int mv = board_random_move(&g, &rng, 0);
+                if (!board_play(&g, mv)) board_play(&g, M_PASS);
+            }
+            board_ownership(&g, own);
+            int diff = 0, bad = 0;
+            for (int p = 0; p < 81; p++) {
+                diff += own[p];
+                if (own[p] < -1 || own[p] > 1) bad++;
+            }
+            CHECK(bad == 0, "ownership labels stay in {-1,0,+1}");
+            CHECK(fabs((double)diff - board_score(&g, 0.0)) < 1e-9,
+                  "ownership sum matches area score on a played-out board (%d vs %.1f)",
+                  diff, board_score(&g, 0.0));
+        }
+    }
+
     /* --- playouts always finish and return a valid result --- */
     {
         Rng rng; rng_seed(&rng, 12345);

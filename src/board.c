@@ -296,6 +296,39 @@ double board_score(const Board *b, double komi) {
     return (double)black - (double)white - komi;
 }
 
+void board_ownership(const Board *b, int8_t *own) {
+    const int npoints = b->size * b->size;
+    int8_t seen[BOARD_MAX_POINTS];
+    int    region[BOARD_MAX_POINTS];
+    int    stack[BOARD_MAX_POINTS];
+    memset(seen, 0, (size_t)npoints);
+    for (int p = 0; p < npoints; p++)
+        own[p] = (b->cell[p] == 1) ? 1 : (b->cell[p] == 2 ? -1 : 0);
+    for (int start = 0; start < npoints; start++) {
+        if (b->cell[start] != 0 || seen[start]) continue;
+        int sp = 0, nr = 0, touch_black = 0, touch_white = 0;
+        stack[sp++] = start;
+        seen[start] = 1;
+        while (sp > 0) {
+            const int p = stack[--sp];
+            region[nr++] = p;
+            int nb[4];
+            const int c = board_neighbors(b, p, nb);
+            for (int i = 0; i < c; i++) {
+                const int q = nb[i];
+                const int8_t v = b->cell[q];
+                if (v == 0) {
+                    if (!seen[q]) { seen[q] = 1; stack[sp++] = q; }
+                } else if (v == 1) touch_black = 1;
+                else touch_white = 1;
+            }
+        }
+        const int8_t v = (touch_black && !touch_white) ? 1
+                       : (touch_white && !touch_black) ? -1 : 0;
+        for (int i = 0; i < nr; i++) own[region[i]] = v;
+    }
+}
+
 int board_winner(const Board *b, double komi) {
     const double s = board_score(b, komi);
     if (s > 0) return 1;
