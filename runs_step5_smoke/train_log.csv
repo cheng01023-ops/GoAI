@@ -1,1 +1,2 @@
 iteration,games,positions,policy_loss,value_loss,param_norm,winrate_vs_random,gate_winrate,elapsed_s,lr,anchor_winrate,selfplay_s,train_s,eval_s,own_loss
+1,100,9686,2.91235,2.78917,298.8268,1.0000,0.2000,160.33,0.000200,0.0250,58.14,3.62,98.57,0.66752
