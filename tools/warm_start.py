@@ -187,7 +187,7 @@ def widen_in_cols(flat, shape, axis, S, m):
     return res
 
 
-def widen_same_size(src, T, blocks, seed=20241001, noise=0.02):
+def widen_same_size(src, T, blocks, seed=20241001, noise=0.002):
     """9x9 同棋盘：通道 S -> T（整数倍）+ 残差块 B1 -> B2（新块零初始化）。
        返回 (params, 说明字符串列表)"""
     S = src["channels"]
@@ -394,7 +394,8 @@ def _selftest():
         if abs(a - b) > 1e-6 * max(1.0, abs(b)):
             bad += 1
     assert bad == 0, "策略头 1x1 输入列加宽没有保持加权和（%d 处）" % bad
-    print("同棋盘加宽: %d -> %d 通道 / %d 块，%d 参数；恒等式校验 OK" % (S, T, B2, len(p)))
+    print("同棋盘加宽: %d -> %d 通道 / %d 块，%d 参数；恒等式校验 OK（下游加权和逐值不变）"
+          % (S, T, B2, len(p)))
     for n in notes:
         print("   ", n)
 
@@ -417,7 +418,9 @@ def main():
     ap.add_argument("--blocks", type=int, default=0, help="目标残差块数（默认与源相同）")
     ap.add_argument("--out", default="warm.bin", help="输出文件")
     ap.add_argument("--seed", type=int, default=20241001)
-    ap.add_argument("--noise", type=float, default=0.02, help="加宽时新通道的破对称噪声强度")
+    ap.add_argument("--noise", type=float, default=0.002,
+                    help="加宽时新通道的破对称噪声强度（默认 0.002：策略/价值与原网络差 <3e-3；"
+                         "调大更利于打破对称但会偏离函数保持）")
     ap.add_argument("--selftest", action="store_true")
     a = ap.parse_args()
 
