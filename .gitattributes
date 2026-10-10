@@ -1,0 +1,11 @@
+# Windows 批处理必须是 CRLF，否则 cmd.exe 会解析错乱（曾导致 PLAY_NOW.bat 双击打不开）
+*.bat      text eol=crlf
+# macOS/Linux 的启动脚本必须是 LF
+*.command  text eol=lf
+*.sh       text eol=lf
+# 二进制文件不要做行尾转换
+*.bin      binary
+*.exe      binary
+*.pdb      binary
+*.png      binary
+*.gz       binary

@@ -9,7 +9,7 @@ echo.
 where gcc >nul 2>nul
 if errorlevel 1 goto nogcc
 echo [1/2] Compiling (about 10 seconds)...
-gcc -O3 -ffast-math -std=c11 -DGOAI_NO_CURSES -Iinclude src\goboard.c src\board.c src\compat.c src\net.c src\mcts.c -o GoBoard.exe -lm
+gcc -O3 -static -ffast-math -std=c11 -DGOAI_NO_CURSES -Iinclude src\goboard.c src\board.c src\compat.c src\net.c src\mcts.c -o GoBoard.exe -lm
 if errorlevel 1 goto buildfail
 echo       OK: GoBoard.exe
 echo.

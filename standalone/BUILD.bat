@@ -9,7 +9,7 @@ if errorlevel 1 (
   exit /b 1
 )
 echo Compiling...
-gcc -O3 -ffast-math -std=c11 -DGOAI_NO_CURSES -Iinclude src\goboard.c src\board.c src\compat.c src\net.c src\mcts.c -o GoBoard.exe -lm
+gcc -O3 -static -ffast-math -std=c11 -DGOAI_NO_CURSES -Iinclude src\goboard.c src\board.c src\compat.c src\net.c src\mcts.c -o GoBoard.exe -lm
 if errorlevel 1 ( echo Compile failed. & pause & exit /b 1 )
 echo OK: GoBoard.exe
 pause

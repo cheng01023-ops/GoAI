@@ -19,8 +19,13 @@
 **双击 PLAY_NOW.bat** —— 包里已经带了编译好的 GoBoard.exe（Windows 64 位），
 不需要装编译器、不需要装 Python、不需要联网。解压 → 双击 → 开始下棋。
 
-    GoBoard.exe      299 KB，AI 权重已编译进程序内部
+    GoBoard.exe      AI 权重（v5，最强）已编译进程序内部
     只依赖 Windows 自带的系统 DLL（KERNEL32 + UCRT），Win10/11 直接能跑
+
+> ⚠️ **打不开时的排错**：如果双击 `PLAY_NOW.bat` 没反应，多半是拿到了旧包
+> （旧版 .bat 是 Unix 行尾、且在 `chcp` 前含中文，中文 Windows 会解析失败）——
+> 用新版压缩包，或直接双击 `BUILD_AND_PLAY.bat` 在本机重新编译。
+> 报缺少 `libwinpthread-1.dll` 时，`PLAY_NOW.bat` 会自动改用备用版 `GoBoard-fallback.exe`。
 
 ### 方法 1：从源码编译（改了代码就用这个）
 
