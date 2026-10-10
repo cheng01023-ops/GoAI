@@ -5,3 +5,7 @@
   值头：33 桶分布（交叉熵；这个数字与以前的 MSE 不可比）
   输出目录 runs_step5_smoke2/  （latest.bin / best.bin / train_log.csv / status.txt）
   模式：训练 2 轮后结束
+
+收到停止请求：本轮只跑了部分对局，直接保存当前权重后退出。
+
+训练已停止（共 0 轮 / 0 局 / 0.4 分钟），权重保存在 runs_step5_smoke2/latest.bin
